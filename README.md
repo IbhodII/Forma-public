@@ -80,13 +80,13 @@ Roadmap
 
 ## Документация
 
-- ARCHITECTURE.md
-- DATABASE.md
-- ANALYTICS.md
-- FORMA_SYNC.md
-- MOBILE.md
-- ROADMAP.md
-
+- [Архитектура](docs/ARCHITECTURE.md)
+- [База данных](docs/DATABASE.md)
+- [Аналитика](docs/ANALYTICS.md)
+- [Forma Sync](docs/FORMA_SYNC.md)
+- [Мобильное приложение](docs/MOBILE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [История изменений](docs/CHANGELOG.md)
 
 ## Почему проект открыт
 
