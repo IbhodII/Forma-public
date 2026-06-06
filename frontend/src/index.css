@@ -1,0 +1,443 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Семантические цвета приложения */
+:root {
+  --app-bg: 248 250 252;
+  --app-surface: 255 255 255;
+  --app-surface-subtle: 241 245 249;
+  --app-text: 15 23 42;
+  --app-text-muted: 100 116 139;
+  --app-border: 226 232 240;
+  --app-border-soft: 241 245 249;
+  --app-header: 255 255 255;
+  --app-subtab-track: 241 245 249;
+  --app-subtab-active: 255 255 255;
+  --app-subtab-hover: 248 250 252;
+  --app-subtab-active-text: 4 120 87;
+  --app-accent: 5 150 105;
+  --app-chart-line: 16 185 129;
+  --app-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --app-shadow-md: 0 4px 12px rgb(15 23 42 / 0.08);
+  --app-radius-card: 14px;
+  --app-radius-input: 10px;
+}
+
+html.dark {
+  color-scheme: dark;
+  --app-bg: 2 6 23;
+  --app-surface: 30 41 59;
+  --app-surface-subtle: 30 41 59;
+  --app-text: 241 245 249;
+  --app-text-muted: 148 163 184;
+  --app-border: 51 65 85;
+  --app-border-soft: 30 41 59;
+  --app-header: 15 23 42;
+  --app-subtab-track: 51 65 85;
+  --app-subtab-active: 71 85 105;
+  --app-subtab-hover: 51 65 85;
+  --app-subtab-active-text: 110 231 183;
+  --app-accent: 52 211 153;
+  --app-chart-line: 52 211 153;
+  --app-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --app-shadow-md: 0 4px 16px rgb(0 0 0 / 0.45);
+}
+
+html:not(.dark) {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  background-color: rgb(var(--app-bg));
+  color: rgb(var(--app-text));
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 320px;
+  border-radius: 0.5rem;
+  z-index: 0;
+  background-color: rgb(var(--app-surface-subtle));
+}
+
+html.dark .leaflet-popup-content-wrapper,
+html.dark .leaflet-popup-tip {
+  background-color: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  border: 1px solid rgb(var(--app-border));
+}
+
+@layer components {
+  .card-panel {
+    border-radius: var(--app-radius-card);
+    box-shadow: var(--app-shadow-sm);
+    @apply border p-5;
+    background-color: rgb(var(--app-surface));
+    border-color: rgb(var(--app-border));
+    color: rgb(var(--app-text));
+  }
+  .card-metric {
+    border-radius: var(--app-radius-card);
+    box-shadow: var(--app-shadow-sm);
+    @apply border p-5;
+    background-color: rgb(var(--app-surface));
+    border-color: rgb(var(--app-border));
+    color: rgb(var(--app-text));
+  }
+
+  @media (min-width: 1024px) {
+    .card-panel,
+    .card-metric {
+      @apply p-4;
+    }
+  }
+  .input-field {
+    border-radius: var(--app-radius-input);
+    @apply w-full border px-3 py-2 text-sm min-h-10 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500;
+    background-color: rgb(var(--app-surface));
+    border-color: rgb(var(--app-border));
+    color: rgb(var(--app-text));
+  }
+  .btn-primary {
+    border-radius: var(--app-radius-input);
+    @apply px-4 py-2 min-h-10 text-white text-sm font-medium disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    background-color: rgb(var(--app-accent));
+    --tw-ring-color: rgb(var(--app-accent) / 0.45);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+  .btn-secondary {
+    border-radius: var(--app-radius-input);
+    @apply px-4 py-2 min-h-10 border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2;
+    border-color: rgb(var(--app-border));
+    color: rgb(var(--app-text));
+    @apply hover:bg-slate-100 dark:hover:bg-slate-700;
+  }
+
+  .subtabs-track {
+    @apply flex flex-wrap gap-2 p-1 rounded-xl;
+    background-color: rgb(var(--app-subtab-track));
+  }
+  .subtabs-tab {
+    @apply px-4 py-2 rounded-lg text-sm font-medium transition-all;
+    color: rgb(var(--app-text-muted));
+  }
+  .subtabs-tab:hover {
+    color: rgb(var(--app-text));
+    background-color: rgb(var(--app-subtab-hover));
+  }
+  .subtabs-tab:focus-visible {
+    @apply outline-none ring-2 ring-emerald-500/40 ring-offset-2;
+  }
+  .subtabs-tab-active {
+    @apply px-4 py-2 rounded-lg text-sm font-medium shadow-sm ring-1 transition-all;
+    background-color: rgb(var(--app-subtab-active));
+    color: rgb(var(--app-subtab-active-text));
+    border-color: rgb(var(--app-border));
+    --tw-ring-color: rgb(var(--app-border));
+  }
+
+  .section-title {
+    @apply font-medium text-base;
+    color: rgb(var(--app-text));
+  }
+
+  .glass-panel {
+    @apply rounded-2xl border border-white/40 bg-white/70 shadow-xl shadow-slate-200/40 backdrop-blur-xl;
+    @apply dark:border-white/10 dark:bg-slate-900/50 dark:shadow-black/30;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm;
+    background-color: rgb(0 0 0 / 0.45);
+  }
+
+  .modal-panel {
+    border-radius: var(--app-radius-card);
+    @apply w-full border animate-slide-up;
+    background-color: rgb(var(--app-surface));
+    border-color: rgb(var(--app-border) / 0.85);
+    color: rgb(var(--app-text));
+    box-shadow: var(--app-shadow-md);
+  }
+}
+
+/* Mobile-first density: same style, tighter structure and touch-first controls */
+@media (max-width: 639px) {
+  :root {
+    --app-radius-card: 12px;
+    --app-radius-input: 9px;
+    --app-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+    --app-shadow-md: 0 3px 10px rgb(15 23 42 / 0.08);
+  }
+
+  h1 {
+    font-size: clamp(1.35rem, 6vw, 1.65rem);
+    line-height: 1.25;
+  }
+  h2 {
+    font-size: clamp(1.1rem, 5vw, 1.35rem);
+    line-height: 1.3;
+  }
+  h3 {
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+
+  .card-panel,
+  .card-metric {
+    padding: 0.8rem !important;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .input-field {
+    min-height: 44px;
+    font-size: 0.95rem;
+  }
+
+  .subtabs-track {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.4rem;
+    padding: 0.35rem;
+  }
+
+  .subtabs-tab,
+  .subtabs-tab-active {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .desktop-titlebar {
+    backdrop-filter: none;
+  }
+
+  .modal-overlay {
+    @apply p-2;
+  }
+
+  .modal-panel {
+    max-height: min(94dvh, 780px);
+  }
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: toast-in 0.28s ease-out;
+}
+
+/* Таблицы и списки в основном контенте */
+html.dark main table thead {
+  background-color: rgb(30 41 59);
+  color: rgb(203 213 225);
+}
+html.dark main tbody tr {
+  border-color: rgb(51 65 85);
+}
+html.dark main tbody tr:hover {
+  background-color: rgb(30 41 59 / 0.5);
+}
+
+/* Модальные окна */
+html.dark .bg-white.rounded-xl,
+html.dark .bg-white.rounded-lg {
+  background-color: rgb(var(--app-surface)) !important;
+  color: rgb(var(--app-text));
+}
+
+/* Текст slate-* в контенте → читаемый в тёмной теме (цветные text-red/green/brand не трогаем) */
+html.dark main :where([class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"]) {
+  color: rgb(var(--app-text));
+}
+html.dark main :where([class~="text-slate-600"], [class~="text-slate-500"], [class~="text-slate-400"]) {
+  color: rgb(var(--app-text-muted));
+}
+
+/* Светлые фоны tailwind в main → поверхности приложения */
+html.dark main :where([class*="bg-slate-50"], [class*="bg-slate-100"]) {
+  background-color: rgb(var(--app-surface-subtle)) !important;
+}
+html.dark main :where([class*="bg-white"]) {
+  background-color: rgb(var(--app-surface)) !important;
+}
+html.dark main :where([class*="border-slate-200"], [class*="border-slate-300"]) {
+  border-color: rgb(var(--app-border)) !important;
+}
+
+html.dark main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark main select,
+html.dark main textarea {
+  color-scheme: dark;
+  background-color: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  border-color: rgb(var(--app-border));
+}
+
+/* Plotly: контраст подсказок (пульс на /workouts, вело-графики) */
+.js-plotly-plot .hoverlayer .hovertext path {
+  stroke-width: 1.5px;
+}
+.js-plotly-plot .hoverlayer .hovertext text {
+  fill: #0f172a !important;
+  font-weight: 500;
+}
+html.dark .js-plotly-plot .hoverlayer .hovertext text {
+  fill: #f8fafc !important;
+}
+.js-plotly-plot .hoverlayer .hovertext rect {
+  fill: #ffffff !important;
+  stroke: #1e293b !important;
+  stroke-width: 1.5px;
+  opacity: 1 !important;
+}
+html.dark .js-plotly-plot .hoverlayer .hovertext rect {
+  fill: #0f172a !important;
+  stroke: #e2e8f0 !important;
+  opacity: 1 !important;
+}
+
+.desktop-window {
+  min-height: 100vh;
+  background-color: rgb(var(--app-bg));
+}
+
+.desktop-window__content {
+  padding-top: 32px;
+  min-height: 100vh;
+}
+
+.desktop-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-header));
+  backdrop-filter: blur(8px);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.desktop-titlebar__drag {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  min-width: 0;
+}
+
+.desktop-titlebar__icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.desktop-titlebar__controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-titlebar__button {
+  width: 46px;
+  height: 32px;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  color: rgb(var(--app-text-muted));
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.desktop-titlebar__button:hover {
+  background: rgb(var(--app-surface-subtle));
+  color: rgb(var(--app-text));
+}
+
+.desktop-titlebar__button:active {
+  background: rgb(var(--app-border-soft));
+}
+
+.desktop-titlebar__button--close:hover {
+  background: rgb(220 38 38);
+  color: rgb(255 255 255);
+}
+
+/* Desktop shell — content width follows --desktop-content-max */
+.dashboard-shell {
+  max-width: var(--desktop-content-max);
+}
+
+.app-sidebar {
+  border-color: rgb(var(--app-border) / 0.55);
+  background: rgb(var(--app-surface) / 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.04);
+}
+
+html:not(.dark) .app-sidebar {
+  background: linear-gradient(
+    180deg,
+    rgb(var(--app-surface) / 0.92) 0%,
+    rgb(var(--app-bg) / 0.75) 100%
+  );
+}
+
+.app-nav-link--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: rgb(var(--app-accent));
+}

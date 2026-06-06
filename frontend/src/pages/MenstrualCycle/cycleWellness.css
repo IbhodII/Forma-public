@@ -1,0 +1,82 @@
+/* Women's cycle — premium wellness shell */
+.cycle-wellness {
+  --cycle-rose: 350 45% 88%;
+  --cycle-blush: 12 55% 92%;
+  --cycle-lavender: 270 35% 90%;
+  --cycle-mauve: 320 25% 75%;
+  --cycle-ink: 280 15% 18%;
+  --cycle-muted: 280 8% 42%;
+  --cycle-surface: 0 0% 100% / 0.78;
+  --cycle-glow: 350 60% 75% / 0.35;
+}
+
+.cycle-wellness__hero {
+  background: linear-gradient(
+    152deg,
+    hsl(var(--cycle-blush)) 0%,
+    hsl(var(--cycle-lavender)) 42%,
+    hsl(var(--cycle-rose)) 100%
+  );
+  border-radius: 1.75rem;
+  box-shadow:
+    0 1px 0 hsl(0 0% 100% / 0.55) inset,
+    0 28px 56px -16px hsl(var(--cycle-glow));
+}
+
+.cycle-wellness__glass {
+  background: hsl(var(--cycle-surface));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid hsl(0 0% 100% / 0.45);
+}
+
+.cycle-wellness__card {
+  border-radius: 1.25rem;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease;
+}
+
+.cycle-wellness__card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px -20px hsl(var(--cycle-glow));
+}
+
+@keyframes cycle-soft-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.cycle-marker-pulse {
+  animation: cycle-soft-pulse 3s ease-in-out infinite;
+}
+
+.cycle-floating-log {
+  box-shadow:
+    0 10px 40px hsl(350 50% 60% / 0.28),
+    0 2px 8px hsl(0 0% 0% / 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cycle-wellness__card,
+  .cycle-marker-pulse {
+    animation: none;
+    transition: none;
+  }
+}
+
+.cycle-wellness__main-grid {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 1920px) {
+  .cycle-wellness__main-grid {
+    gap: 1.75rem;
+  }
+}

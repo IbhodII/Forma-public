@@ -1,0 +1,37 @@
+Health Dashboard - how to start
+===============================
+
+RECOMMENDED (if start.bat opens Notepad):
+  Double-click:  start.vbs
+
+Alternative:
+  Double-click:  start.bat
+  (must run via Command Processor, not Notepad)
+
+From PowerShell in this folder:
+  .\start.ps1
+
+Stop everything:
+  .\start.ps1 -Stop
+
+Open in browser:
+  http://127.0.0.1:5173
+  API docs: http://127.0.0.1:8000/docs  (or :8002 — see .api-port)
+
+Android app (Forma):
+  docs/MOBILE.md            (APK build, EXPO_PUBLIC_API_BASE_URL, OAuth)
+  mobile/.env.example
+
+Documentation:
+  docs/README.md              (Markdown, full index)
+  doc/UNITS_CONVERSION.md     (metric -> american units reference)
+  docs/docx/                  (Word .docx files)
+
+Fix .bat opening in Notepad (run once in cmd as admin):
+  assoc .bat=batfile
+  ftype batfile=%SystemRoot%\System32\cmd.exe /c "%1" %*
+
+If the UI opens but lists are empty (no products / meal plans):
+  1) .\start.ps1 -Stop
+  2) start.vbs again (restarts Vite so frontend/.env is applied)
+  Frontend must use /api proxy (see frontend/.env), not http://localhost:8000/api

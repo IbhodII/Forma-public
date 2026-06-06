@@ -1,0 +1,50 @@
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 26
+        compileSdkVersion = 35
+        targetSdkVersion = 35
+        ndkVersion = "26.1.10909125"
+        kotlinVersion = "1.9.25"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// Стабильные версии ML Kit / Play Services (подсказка EAS «native dependency not compatible»).
+subprojects { sub ->
+    sub.configurations.configureEach {
+        resolutionStrategy {
+            force "com.google.mlkit:barcode-scanning:17.3.0"
+            force "com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1"
+            force "com.google.android.gms:play-services-mlkit-text-recognition:19.0.1"
+        }
+    }
+}
+
+// VisionCamera (frame processors) линкуется к react-native-worklets-core через prefab — сначала собрать worklets.
+gradle.projectsEvaluated {
+    def worklets = rootProject.findProject(":react-native-worklets-core")
+    def visionCamera = rootProject.findProject(":react-native-vision-camera")
+    if (worklets == null || visionCamera == null) {
+        return
+    }
+    visionCamera.tasks.matching { task ->
+        task.name.contains("configureCMake") || task.name.contains("buildCMake")
+    }.configureEach { task ->
+        worklets.tasks.matching { wt ->
+            wt.name.contains("buildCMake") || wt.name.contains("prefab")
+        }.configureEach { wt ->
+            task.dependsOn(wt)
+        }
+    }
+}

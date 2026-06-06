@@ -1,0 +1,44 @@
+/* Workouts page — wide desktop layout */
+
+.workouts-layout {
+  width: 100%;
+  min-width: 0;
+}
+
+.workouts-layout__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap, 1rem);
+  min-width: 0;
+}
+
+@media (min-width: 1440px) {
+  .workouts-layout__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .workouts-layout__body--with-aside {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, var(--desktop-aside-width));
+    align-items: start;
+  }
+
+  .workouts-layout__aside {
+    position: sticky;
+    top: 5.5rem;
+    max-height: calc(100vh - 6.5rem);
+    overflow-y: auto;
+  }
+}
+
+.workouts-layout__main {
+  min-width: 0;
+}
+
+/* Exercise catalog grid on ultra-wide */
+@media (min-width: 1920px) {
+  .workouts-exercises-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

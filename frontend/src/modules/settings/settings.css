@@ -1,0 +1,378 @@
+/* Settings control center */
+
+.settings-hub {
+  width: 100%;
+  max-width: var(--desktop-content-max);
+  margin-inline: auto;
+  @apply space-y-4 sm:space-y-5;
+}
+
+.settings-hub__header {
+  @apply space-y-1;
+}
+
+.settings-hub__title {
+  @apply text-2xl font-semibold tracking-tight;
+  color: rgb(var(--app-text));
+}
+
+.settings-hub__subtitle {
+  @apply text-sm leading-relaxed max-w-2xl;
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-hub__layout {
+  @apply flex flex-col lg:flex-row gap-4 lg:gap-5 items-start;
+}
+
+.settings-sidebar {
+  @apply w-full lg:w-[220px] xl:w-[240px] shrink-0 rounded-2xl border p-2;
+  border-color: rgb(var(--app-border) / 0.85);
+  background: linear-gradient(
+    180deg,
+    rgb(var(--app-surface)) 0%,
+    rgb(var(--app-subtab-track) / 0.35) 100%
+  );
+  box-shadow: var(--app-shadow-sm);
+}
+
+.settings-sidebar__list {
+  @apply flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-0.5 lg:pb-0;
+}
+
+.settings-sidebar__btn {
+  @apply w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left transition-all duration-200 whitespace-nowrap lg:whitespace-normal;
+  color: rgb(var(--app-text-muted));
+}
+
+@media (max-width: 639px) {
+  .settings-sidebar__btn {
+    min-height: 44px;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+}
+
+.settings-sidebar__btn:hover {
+  color: rgb(var(--app-text));
+  background-color: rgb(var(--app-subtab-track) / 0.5);
+}
+
+.settings-sidebar__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--app-accent) / 0.35);
+}
+
+.settings-sidebar__btn--active {
+  @apply font-semibold;
+  color: rgb(var(--app-accent));
+  background-color: rgb(var(--app-surface));
+  border: 1px solid rgb(var(--app-accent) / 0.28);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.settings-sidebar__icon {
+  @apply shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-base;
+  background-color: rgb(var(--app-subtab-track) / 0.6);
+}
+
+.settings-sidebar__btn--active .settings-sidebar__icon {
+  background: linear-gradient(135deg, rgb(var(--app-accent) / 0.2) 0%, rgb(var(--app-accent) / 0.08) 100%);
+}
+
+.settings-main {
+  @apply flex-1 min-w-0 w-full space-y-4;
+}
+
+.settings-status-row {
+  @apply flex flex-wrap gap-2;
+}
+
+.settings-status-pill {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors;
+  border-color: rgb(var(--app-border) / 0.85);
+  background-color: rgb(var(--app-surface));
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-status-pill__dot {
+  @apply w-1.5 h-1.5 rounded-full shrink-0;
+}
+
+.settings-status-pill--ok .settings-status-pill__dot {
+  @apply bg-emerald-500;
+}
+
+.settings-status-pill--ok {
+  color: rgb(var(--app-text));
+}
+
+.settings-status-pill--warn .settings-status-pill__dot {
+  @apply bg-amber-500;
+}
+
+.settings-status-pill--idle .settings-status-pill__dot {
+  @apply bg-slate-400;
+}
+
+.settings-section {
+  @apply rounded-2xl border overflow-hidden;
+  border-color: rgb(var(--app-border) / 0.85);
+  background-color: rgb(var(--app-surface));
+  box-shadow: var(--app-shadow-sm);
+  animation: settings-section-in 0.28s ease-out;
+}
+
+@keyframes settings-section-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-section__head {
+  @apply px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b;
+  border-color: rgb(var(--app-border) / 0.5);
+  background: linear-gradient(
+    180deg,
+    rgb(var(--app-subtab-track) / 0.25) 0%,
+    transparent 100%
+  );
+}
+
+.settings-section__title {
+  @apply text-lg font-semibold tracking-tight;
+  color: rgb(var(--app-text));
+}
+
+.settings-section__desc {
+  @apply text-sm mt-1 leading-relaxed max-w-3xl;
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-section__body {
+  @apply px-4 sm:px-5 py-4 sm:py-4 space-y-4;
+}
+
+@media (min-width: 1024px) {
+  .settings-subsection {
+    @apply p-3.5 space-y-2.5;
+  }
+}
+
+@media (max-width: 639px) {
+  .settings-hub {
+    @apply space-y-3;
+  }
+  .settings-hub__layout {
+    @apply gap-3;
+  }
+  .settings-section {
+    border-radius: 0.9rem;
+  }
+  .settings-section__head {
+    @apply px-3 pt-3 pb-2.5;
+  }
+  .settings-section__title {
+    font-size: 1rem;
+  }
+  .settings-section__desc {
+    @apply text-xs;
+  }
+  .settings-section__body {
+    @apply px-3 py-3 space-y-3;
+  }
+  .settings-subsection {
+    @apply p-3;
+  }
+}
+
+.settings-subsection {
+  @apply rounded-xl border p-4 space-y-3;
+  border-color: rgb(var(--app-border) / 0.7);
+  background-color: rgb(var(--app-subtab-track) / 0.2);
+}
+
+.settings-subsection__title {
+  @apply text-sm font-semibold;
+  color: rgb(var(--app-text));
+}
+
+.settings-subsection__desc {
+  @apply text-xs leading-relaxed;
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-integration-grid {
+  @apply grid gap-3 sm:grid-cols-2;
+}
+
+@media (min-width: 1920px) {
+  .settings-integration-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .settings-provider-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.settings-integration-card {
+  @apply rounded-xl border p-4 flex flex-col gap-3 transition-all duration-200;
+  border-color: rgb(var(--app-border) / 0.85);
+  background-color: rgb(var(--app-surface));
+}
+
+.settings-integration-card:hover {
+  border-color: rgb(var(--app-accent) / 0.35);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.05);
+}
+
+.settings-integration-card__head {
+  @apply flex items-start justify-between gap-2;
+}
+
+.settings-integration-card__name {
+  @apply font-semibold text-sm;
+  color: rgb(var(--app-text));
+}
+
+.settings-integration-card__badge {
+  @apply text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0;
+}
+
+.settings-integration-card__badge--ok {
+  @apply bg-emerald-500/15 text-emerald-700 dark:text-emerald-400;
+}
+
+.settings-integration-card__badge--idle {
+  @apply bg-slate-500/10 text-slate-600 dark:text-slate-400;
+}
+
+.settings-integration-card__badge--warn {
+  @apply bg-amber-500/15 text-amber-800 dark:text-amber-300;
+}
+
+.settings-integration-card__badge--future {
+  @apply bg-violet-500/10 text-violet-700 dark:text-violet-400;
+}
+
+.settings-integration-card__meta {
+  @apply text-xs space-y-1 tabular-nums;
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-provider-grid {
+  @apply grid sm:grid-cols-2 gap-3;
+}
+
+.settings-provider-card {
+  @apply rounded-xl border p-4 cursor-pointer transition-all duration-200 text-left w-full;
+  border-color: rgb(var(--app-border) / 0.85);
+}
+
+.settings-provider-card:hover {
+  border-color: rgb(var(--app-accent) / 0.4);
+}
+
+.settings-provider-card--active {
+  @apply ring-1 shadow-sm;
+  border-color: rgb(var(--app-accent));
+  background: linear-gradient(
+    135deg,
+    rgb(var(--app-accent) / 0.1) 0%,
+    rgb(var(--app-surface)) 100%
+  );
+  ring-color: rgb(var(--app-accent) / 0.35);
+}
+
+.settings-profile-card {
+  @apply grid grid-cols-2 sm:grid-cols-4 gap-3;
+}
+
+.settings-profile-stat {
+  @apply rounded-lg border px-3 py-2.5;
+  border-color: rgb(var(--app-border) / 0.6);
+  background-color: rgb(var(--app-subtab-track) / 0.25);
+}
+
+.settings-profile-stat__label {
+  @apply text-[10px] font-semibold uppercase tracking-wide;
+  color: rgb(var(--app-text-muted));
+}
+
+.settings-profile-stat__value {
+  @apply text-sm font-semibold mt-0.5 tabular-nums;
+  color: rgb(var(--app-text));
+}
+
+.settings-path-field {
+  @apply flex flex-col sm:flex-row gap-2;
+}
+
+.settings-path-field__input-wrap {
+  @apply flex-1 relative;
+}
+
+.settings-path-status {
+  @apply absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium px-2 py-0.5 rounded-md;
+}
+
+.settings-path-status--ok {
+  @apply bg-emerald-500/15 text-emerald-700 dark:text-emerald-400;
+}
+
+.settings-path-status--empty {
+  @apply bg-amber-500/10 text-amber-800 dark:text-amber-300;
+}
+
+.settings-toggle-row {
+  @apply flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5;
+  border-color: rgb(var(--app-border) / 0.7);
+}
+
+.settings-toggle-row--disabled {
+  @apply opacity-60;
+}
+
+.settings-account-placeholder {
+  @apply rounded-2xl border border-dashed p-8 sm:p-10 text-center;
+  border-color: rgb(var(--app-border));
+  background: linear-gradient(
+    160deg,
+    rgb(var(--app-subtab-track) / 0.4) 0%,
+    rgb(var(--app-surface)) 60%
+  );
+}
+
+.settings-data-nav {
+  @apply flex flex-wrap gap-2 pb-1;
+}
+
+.settings-data-nav__btn {
+  @apply rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors;
+  border-color: rgb(var(--app-border) / 0.75);
+  color: rgb(var(--app-text-muted));
+  background-color: rgb(var(--app-surface));
+}
+
+.settings-data-nav__btn:hover {
+  color: rgb(var(--app-text));
+  border-color: rgb(var(--app-accent) / 0.35);
+}
+
+.settings-data-nav__btn--active {
+  color: rgb(var(--app-accent));
+  border-color: rgb(var(--app-accent) / 0.45);
+  background-color: rgb(var(--app-accent) / 0.08);
+}
+
+.settings-danger-zone {
+  @apply rounded-xl border p-4;
+  border-color: rgb(245 158 11 / 0.45);
+  background-color: rgb(245 158 11 / 0.06);
+}

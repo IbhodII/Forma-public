@@ -1,0 +1,120 @@
+/* Desktop-wide layout tokens and grids (lg+ only; mobile unchanged) */
+
+:root {
+  --desktop-content-max: 100%;
+  --desktop-text-max: 48rem;
+  --desktop-form-max: 36rem;
+  --desktop-aside-width: 22rem;
+  --desktop-chart-min-height: 16rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --desktop-content-max: min(100%, 92rem);
+    --desktop-aside-width: 20rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --desktop-content-max: min(100%, 96rem);
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --desktop-content-max: min(100%, 96rem);
+    --desktop-aside-width: 24rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --desktop-content-max: min(100%, 112rem);
+    --desktop-aside-width: 26rem;
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --desktop-content-max: min(100%, 120rem);
+  }
+}
+
+.desktop-text-max {
+  max-width: var(--desktop-text-max);
+}
+
+.desktop-form-max {
+  max-width: var(--desktop-form-max);
+}
+
+.desktop-content-max {
+  width: 100%;
+  max-width: var(--desktop-content-max);
+  margin-inline: auto;
+}
+
+.desktop-chart-panel {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--desktop-chart-min-height);
+}
+
+/* 1 col mobile; 2 col main + aside @wide */
+.desktop-page-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap, 1rem);
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 1440px) {
+  .desktop-page-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, var(--desktop-aside-width));
+    align-items: start;
+    gap: 1.25rem;
+  }
+
+  .desktop-page-grid__main {
+    min-width: 0;
+  }
+
+  .desktop-page-grid__aside {
+    min-width: 0;
+    position: sticky;
+    top: 5.5rem;
+    max-height: calc(100vh - 6.5rem);
+    overflow-y: auto;
+  }
+}
+
+/* 2 col balanced @wide; 3 col @ultrawide */
+.desktop-page-grid--balanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap, 1rem);
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 1440px) {
+  .desktop-page-grid--balanced {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  .desktop-page-grid--balanced {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.desktop-page-grid--balanced > * {
+  min-width: 0;
+}

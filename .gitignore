@@ -1,0 +1,78 @@
+# Secrets / local configuration
+.env
+.env.*
+!.env.example
+!**/.env.example
+frontend/.env.local
+mobile/.env
+.api-port
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.tsbuildinfo
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.bundle/
+
+# Desktop / Electron build artifacts
+frontend/dist/
+frontend/build/backend/
+frontend/build/backend_py/
+frontend/build/backend_py*/
+frontend/backend_bin/
+frontend/release*/
+frontend/*.blockmap
+
+# Mobile / Android build artifacts
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/.expo/
+mobile/.gradle/
+mobile/dist/
+
+# Test and cache outputs
+cache/
+.cache/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+coverage/
+
+# Runtime databases and backups
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.bak
+*.wal
+*.shm
+
+# Runtime jobs, logs, reports, exports
+import-jobs/
+logs/
+mini-db-exports/
+fit_files/
+polar_temp/
+data/
+*.log
+*.zip
+*.xlsx
+*.csv
+*_export*
+sync_log.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

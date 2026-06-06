@@ -1,0 +1,120 @@
+/* Wellness shell for stretching — scoped under .stretch-wellness */
+.stretch-wellness {
+  --stretch-mint: 168 76% 42%;
+  --stretch-sage: 152 35% 88%;
+  --stretch-lavender: 258 55% 92%;
+  --stretch-peach: 24 90% 92%;
+  --stretch-ink: 220 25% 14%;
+  --stretch-muted: 220 12% 46%;
+  --stretch-surface: 0 0% 100% / 0.72;
+  --stretch-glow: 168 70% 55% / 0.25;
+}
+
+/* Follow global theme from Settings (html.dark via ThemeProvider) */
+html.dark .stretch-wellness {
+  --stretch-surface: 220 20% 12% / 0.85;
+  --stretch-ink: 210 20% 96%;
+  --stretch-muted: 215 15% 68%;
+  --stretch-sage: 168 25% 22%;
+  --stretch-lavender: 258 30% 22%;
+  --stretch-peach: 220 22% 16%;
+  --stretch-glow: 168 50% 40% / 0.2;
+}
+
+.stretch-wellness__hero {
+  background: linear-gradient(
+    145deg,
+    hsl(var(--stretch-sage)) 0%,
+    hsl(var(--stretch-lavender)) 48%,
+    hsl(var(--stretch-peach)) 100%
+  );
+  border-radius: 1.75rem;
+  box-shadow:
+    0 1px 0 hsl(0 0% 100% / 0.5) inset,
+    0 24px 48px -12px hsl(var(--stretch-glow));
+}
+
+.stretch-wellness--ambient .stretch-wellness__hero {
+  background: linear-gradient(
+    145deg,
+    hsl(168 30% 18%) 0%,
+    hsl(258 25% 16%) 50%,
+    hsl(220 22% 14%) 100%
+  );
+  box-shadow: 0 24px 48px -12px hsl(0 0% 0% / 0.45);
+}
+
+.stretch-wellness__glass {
+  background: hsl(var(--stretch-surface));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(0 0% 100% / 0.35);
+}
+
+html.dark .stretch-wellness .stretch-wellness__glass {
+  border-color: hsl(0 0% 100% / 0.08);
+}
+
+.stretch-flow-card {
+  border-radius: 1.25rem;
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease;
+}
+
+.stretch-flow-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -16px hsl(var(--stretch-glow));
+}
+
+.stretch-flow-card[data-expanded="true"] {
+  box-shadow: 0 24px 48px -20px hsl(var(--stretch-glow));
+}
+
+@keyframes stretch-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.stretch-breathe-dot {
+  animation: stretch-breathe 4s ease-in-out infinite;
+}
+
+@keyframes stretch-progress-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+.stretch-timeline-line {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--stretch-mint)) 0%,
+    hsl(var(--stretch-lavender)) 100%
+  );
+}
+
+.stretch-floating-cta {
+  box-shadow:
+    0 8px 32px hsl(var(--stretch-mint) / 0.35),
+    0 2px 8px hsl(0 0% 0% / 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stretch-flow-card,
+  .stretch-breathe-dot {
+    animation: none;
+    transition: none;
+  }
+}

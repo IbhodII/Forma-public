@@ -1,0 +1,22 @@
+{
+  "name": "health-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "mobile:android": "npm run android --prefix mobile",
+    "mobile:start": "npm start --prefix mobile",
+    "desktop:dev": "npm run desktop:dev --prefix frontend",
+    "desktop:pack": "npm run desktop:pack --prefix frontend",
+    "desktop:dist": "npm run desktop:dist --prefix frontend",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "check:platform-imports": "node scripts/check-platform-imports.mjs",
+    "check:desktop-build": "npm run build --prefix frontend",
+    "postinstall": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}

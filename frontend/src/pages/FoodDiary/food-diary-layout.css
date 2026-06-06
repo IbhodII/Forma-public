@@ -1,0 +1,345 @@
+/* Food diary — content-priority adaptive layout (balanced breakpoints) */
+
+.food-diary-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.food-diary-layout__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  min-width: 0;
+}
+
+.food-diary-layout__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.food-diary-layout__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.food-diary-layout__charts-row {
+  min-width: 0;
+  width: 100%;
+}
+
+.food-diary-layout__charts-row .desktop-chart-panel {
+  min-height: 12rem;
+}
+
+.food-diary-layout__goals {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .food-diary-layout__stack {
+    gap: 1.35rem;
+  }
+
+  .food-diary-layout__charts-row .desktop-chart-panel {
+    min-height: 13rem;
+  }
+}
+
+/* Normal desktop: stacked charts + full-width goals (comfortable on laptops) */
+@media (min-width: 1200px) {
+  .food-diary-layout__stack {
+    gap: 1.5rem;
+  }
+
+  .food-diary-layout__charts-row .desktop-chart-panel {
+    min-height: 14rem;
+  }
+}
+
+/* Wide only: charts | goals side by side */
+@media (min-width: 1536px) {
+  .food-diary-layout__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 1.35rem 1.75rem;
+    align-items: start;
+  }
+
+  .food-diary-layout__goals .goal-projection-section__card {
+    position: sticky;
+    top: 5.5rem;
+    max-height: calc(100vh - 6.5rem);
+    overflow-y: auto;
+  }
+}
+
+/* Ultra-wide: goals full width below charts again */
+@media (min-width: 1680px) {
+  .food-diary-layout__body {
+    grid-template-columns: 1fr;
+    gap: 1.35rem;
+  }
+
+  .food-diary-layout__goals .goal-projection-section__card {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .food-diary-layout__charts-row .desktop-chart-panel {
+    min-height: 15rem;
+  }
+}
+
+/* Body snapshot on diary page */
+.body-snapshot-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+@media (min-width: 640px) {
+  .body-snapshot-panel__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .body-snapshot-panel__grid {
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  }
+}
+
+@media (min-width: 1536px) {
+  .body-snapshot-panel__grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+}
+
+.body-snapshot-panel__grid > * {
+  min-width: 0;
+}
+
+/* Week day tiles */
+.food-week-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .food-week-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .food-week-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .food-week-grid {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem;
+  }
+
+  .food-week-grid > button {
+    min-height: 8rem;
+    padding: 0.65rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .food-week-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1rem 1.15rem;
+  }
+
+  .food-week-grid > button {
+    min-height: 9.25rem;
+  }
+}
+
+/* Week overview — horizontal scroll until enough width */
+.food-week-overview {
+  min-width: 0;
+}
+
+.food-week-overview__track {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0.25rem 0.125rem 0.5rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.food-week-overview__track > * {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+  width: min(100%, 10rem);
+}
+
+.food-week-overview__track > .food-week-overview__card--today {
+  width: min(100%, 11rem);
+  border-color: #000;
+  background:
+    radial-gradient(circle at 18% 0%, rgb(var(--app-accent) / 0.18), transparent 48%),
+    linear-gradient(135deg, rgb(var(--app-accent) / 0.12), rgb(var(--app-surface)) 62%);
+  box-shadow:
+    0 0 0 1px rgb(var(--app-accent) / 0.18),
+    0 14px 32px rgb(var(--app-accent) / 0.13),
+    inset 0 1px 0 rgb(255 255 255 / 0.28);
+  --tw-ring-color: rgb(0 0 0 / 0.82);
+}
+
+.dark .food-week-overview__track > .food-week-overview__card--today {
+  border-color: rgb(var(--app-accent) / 0.82);
+  background:
+    radial-gradient(circle at 20% 0%, rgb(var(--app-accent) / 0.26), transparent 52%),
+    linear-gradient(135deg, rgb(var(--app-accent) / 0.20), rgb(var(--app-surface-subtle)) 58%, rgb(var(--app-surface)) 100%);
+  box-shadow:
+    0 0 0 1px rgb(var(--app-accent) / 0.32),
+    0 0 30px rgb(var(--app-accent) / 0.22),
+    0 16px 42px rgb(0 0 0 / 0.40),
+    inset 0 1px 0 rgb(255 255 255 / 0.10);
+  --tw-ring-color: rgb(var(--app-accent) / 0.48);
+}
+
+.food-week-overview__track > .food-week-overview__card--today.food-week-overview__card--today-selected {
+  border-color: #000;
+  box-shadow:
+    0 0 0 1px rgb(var(--app-accent) / 0.30),
+    0 16px 36px rgb(var(--app-accent) / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.30);
+  --tw-ring-color: rgb(0 0 0 / 0.88);
+}
+
+.dark .food-week-overview__track > .food-week-overview__card--today.food-week-overview__card--today-selected {
+  border-color: rgb(var(--app-accent) / 0.95);
+  box-shadow:
+    0 0 0 1px rgb(var(--app-accent) / 0.42),
+    0 0 36px rgb(var(--app-accent) / 0.28),
+    0 18px 46px rgb(0 0 0 / 0.48),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
+  --tw-ring-color: rgb(var(--app-accent) / 0.58);
+}
+
+.food-week-overview__today-badge {
+  border-color: rgb(var(--app-accent) / 0.42);
+  background: rgb(var(--app-accent) / 0.14);
+  color: rgb(var(--app-accent));
+  box-shadow: 0 0 0 1px rgb(var(--app-accent) / 0.08);
+}
+
+.dark .food-week-overview__today-badge {
+  border-color: rgb(var(--app-accent) / 0.62);
+  background: rgb(var(--app-accent) / 0.24);
+  color: rgb(236 253 245);
+  box-shadow:
+    0 0 0 1px rgb(var(--app-accent) / 0.20),
+    0 0 16px rgb(var(--app-accent) / 0.18);
+}
+
+@media (min-width: 1200px) {
+  .food-week-overview__track {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.25rem, 1fr));
+    gap: 0.75rem;
+    overflow: visible;
+    padding: 0;
+    scroll-snap-type: none;
+  }
+
+  .food-week-overview__track > *,
+  .food-week-overview__track > .food-week-overview__card--today {
+    width: auto;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 1536px) {
+  .food-week-overview__track {
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 1rem 1.15rem;
+  }
+}
+
+/* Day drawer — meal entry rows (long product names) */
+.food-day-meal-table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.food-day-meal-table col.food-day-meal-table__col-qty {
+  width: 3rem;
+}
+
+.food-day-meal-table col.food-day-meal-table__col-macro {
+  width: 2.25rem;
+}
+
+.food-day-meal-table col.food-day-meal-table__col-kcal {
+  width: 3.5rem;
+}
+
+.food-day-meal-table col.food-day-meal-table__col-actions {
+  width: 3.25rem;
+}
+
+.food-day-meal-table th,
+.food-day-meal-table td {
+  vertical-align: middle;
+}
+
+.food-day-meal-table__name {
+  max-width: 0;
+  overflow: hidden;
+  padding-right: 0.35rem;
+}
+
+.food-day-meal-table__name-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* Up to 2 lines, then ellipsis; caps row growth */
+.food-day-meal-table__name-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.35;
+  max-height: calc(1.35em * 2);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.food-day-meal-table__num,
+.food-day-meal-table__actions {
+  white-space: nowrap;
+}
+
+.food-day-meal-table tbody tr {
+  min-height: 2.125rem;
+}
