@@ -52,6 +52,12 @@ export function paceMinPerKm(distanceKm: number, durationSec: number): number | 
   return durationSec / 60 / distanceKm;
 }
 
+/** Темп (мин/км) из мгновенной скорости км/ч. */
+export function speedKmhToPaceMinPerKm(speedKmh: number): number | null {
+  if (!Number.isFinite(speedKmh) || speedKmh <= 0) return null;
+  return 60 / speedKmh;
+}
+
 /** Pace sec/100m for pool */
 export function paceSecPer100m(
   distanceKm: number,
@@ -68,6 +74,18 @@ export function formatPace100m(sec: number | null): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")} / 100м`;
+}
+
+/** Pace as m:ss (e.g. 5:30), input is decimal minutes per km. */
+export function formatPaceMinPerKm(
+  minPerKm: number | null | undefined,
+  unitSuffix = "мин/км",
+): string {
+  if (minPerKm == null || !Number.isFinite(minPerKm) || minPerKm <= 0) return "—";
+  const totalSec = Math.round(minPerKm * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")} ${unitSuffix}`;
 }
 
 /** Локальная календарная дата (совпадает с date.today() на backend). */

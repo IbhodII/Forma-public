@@ -1,8 +1,6 @@
 import type { MetricStatus } from "../../modules/nutrition/analytics/types";
 import { AnalyticsMetricCard } from "../../modules/nutrition/analytics/AnalyticsMetricCard";
 import { useUnits } from "../../hooks/useUnits";
-import { kcalToIcharge } from "../../utils/americanUnits";
-import { fmt } from "./NutritionCharts";
 
 const SAFE_MAX = 35;
 const EXTREME_MAX = 75;
@@ -69,15 +67,11 @@ export function DeficitPerKgFatCard({
   bodyFatPercent: number | null | undefined;
   title?: string;
 }) {
-  const { system } = useUnits();
+  const { formatDeficitPerKgFatValue, deficitPerKgFatUnit } = useUnits();
   const result = computeDeficitPerKgFat(expenditureKcal, intakeKcal, weightKg, bodyFatPercent);
   const displayValue =
-    result?.value != null
-      ? system === "american"
-        ? kcalToIcharge(result.value).toFixed(1)
-        : fmt(result.value)
-      : null;
-  const unit = system === "american" ? "iCharge/кг жира" : "ккал/кг жира";
+    result?.value != null ? formatDeficitPerKgFatValue(result.value) : null;
+  const unit = deficitPerKgFatUnit;
 
   if (result == null) {
     return (

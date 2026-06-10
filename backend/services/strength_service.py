@@ -288,7 +288,7 @@ def _count_sessions(conn, where_sql: str = "", where_params: list[Any] | None = 
 
 
 def list_unique_exercises() -> list[str]:
-    """Список упражнений из глобального справочника all_exercises."""
+    """Список названий упражнений: shared.strength_exercises + пользовательские."""
     from backend.services import exercise_catalog_service
 
     return exercise_catalog_service.list_all_exercise_names()

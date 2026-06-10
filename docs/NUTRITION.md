@@ -2,7 +2,7 @@
 
 Desktop RC source of truth for food diary, products, composite dishes, meal plans, nutrition targets, forecast, and food-related backup/import boundaries.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -13,7 +13,7 @@ Last updated: **2026-06-05**.
 | Food diary | `/food`, weekly-first layout with day drawer |
 | Products | Shared catalog in `food_products`; product CRUD from food UI |
 | Composite dishes | Created from component products and saved as catalog products |
-| Meal plans | Stored in `workouts.db` from schema v070; legacy shared copies are retained |
+| Meal plans | Stored only in `workouts.db` (v070 move, v079 finalize + shared purge) |
 | Nutrition goals | Per-user targets and g/kg settings in profile |
 | Forecast | Cut/bulk forecast and deficit control in desktop UI |
 | Mobile | Local-first food is partial; desktop is current reference for advanced forecast UI |
@@ -63,7 +63,7 @@ Open Food Facts barcode search remains an enrichment path, not the source of tru
 
 ## Meal Plans
 
-Schema v070 moved meal plan tables into `workouts.db`:
+Meal plan tables live in **`workouts.db` only** (canonical after v079):
 
 - `meal_templates`;
 - `meal_template_items`;
@@ -71,7 +71,8 @@ Schema v070 moved meal plan tables into `workouts.db`:
 - `daily_meal_plan_templates`;
 - `meal_plan_items`.
 
-Legacy shared rows are not dropped. Reads go through schema-aware helpers so import/restore can handle old DBs.
+Migration **v079** reconciles any legacy shared rows into main, then **drops** meal tables from `shared.db` (`shared_meal_plans_purged_v1`).  
+Routing: `database/meal_plans_storage.py` (`meal_plan_schema()`). Import of old DBs still supported via reconcile + migrations.
 
 Weekly schedule:
 
@@ -96,7 +97,7 @@ Per-user settings live in `user_profile`:
 Goal deficit validation:
 
 - Intended supported upper limit: **70 kcal/kg fat**.
-- Open P1 issue: values above approximately **60 kcal/kg fat** currently return HTTP 422, although values up to 70 should save.
+- Deficit limit: configurable **5–70 kcal/kg fat** (`max_deficit_per_kg_fat` in profile); physiological ceiling 70 kcal/kg fat.
 - Fix investigation should check frontend validation limits, backend validation limits, API schema constraints and settings persistence logic.
 - Values above 70 should be rejected with a user-friendly validation message.
 

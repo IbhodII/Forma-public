@@ -30,6 +30,8 @@ interface HeartRateChartProps {
   selectedBlockId?: number | null;
   /** Taller plot area for analytics-first layouts. */
   tall?: boolean;
+  /** Cardio activity details: largest readable HR chart (running, cycling, etc.). */
+  analytics?: boolean;
   /** Inline match-quality banner (off when summary handles warnings). */
   showMatchBanner?: boolean;
   onPlotInitialized?: PlotParams["onInitialized"];
@@ -51,6 +53,7 @@ export function HeartRateChart({
   editMode = false,
   selectedBlockId = null,
   tall = false,
+  analytics = false,
   showMatchBanner = false,
   onPlotInitialized,
   onPlotUpdate,
@@ -119,18 +122,20 @@ export function HeartRateChart({
     return traces;
   }, [built.series, blockOverlays.hoverTrace]);
 
+  const largeLayout = tall || analytics;
+
   const plotLayout = useMemo(
     () => ({
-      title: tall ? undefined : { text: built.chartTitle, font: { size: 12 } },
-      margin: tall ? { t: 28, r: 12, b: 40, l: 48 } : undefined,
-      xaxis: { title: { text: built.xTitle, font: { size: tall ? 10 : 11 } } },
-      yaxis: { title: { text: "уд/мин", font: { size: tall ? 10 : 11 } } },
+      title: largeLayout ? undefined : { text: built.chartTitle, font: { size: 12 } },
+      margin: largeLayout ? { t: 28, r: 12, b: 44, l: 52 } : undefined,
+      xaxis: { title: { text: built.xTitle, font: { size: largeLayout ? 11 : 11 } } },
+      yaxis: { title: { text: "уд/мин", font: { size: largeLayout ? 11 : 11 } } },
       hovermode: "closest" as const,
       shapes: blockOverlays.shapes,
       annotations: blockOverlays.annotations,
       dragmode: editMode ? ("pan" as const) : undefined,
     }),
-    [built.chartTitle, built.xTitle, blockOverlays, tall, editMode],
+    [built.chartTitle, built.xTitle, blockOverlays, largeLayout, editMode],
   );
 
   if (!chartPoints.length) {
@@ -138,7 +143,7 @@ export function HeartRateChart({
   }
 
   return (
-    <div className={tall ? "space-y-1" : "space-y-2"}>
+    <div className={largeLayout ? "space-y-1" : "space-y-2"}>
       {axis === "distance" && !canDistance && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
           Нет дистанции у точек пульса.
@@ -155,8 +160,7 @@ export function HeartRateChart({
 
       {built.series.length > 0 ? (
         <PlotChart
-          compact={!tall}
-          tall={tall}
+          size={analytics ? "cardio" : tall ? "tall" : "compact"}
           data={plotData}
           layout={plotLayout}
           className={plotClassName ?? "hr-chart-plot w-full"}

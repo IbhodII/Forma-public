@@ -56,7 +56,7 @@ export function QuickWeightInput({
           Вес, кг
           <input
             type="number"
-            step="0.1"
+            step="0.01"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             className="input-field mt-1"

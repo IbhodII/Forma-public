@@ -11,6 +11,11 @@ import { ErrorAlert } from "../../components/ErrorAlert";
 import { Loader } from "../../components/Loader";
 import { useToast } from "../../components/Toast";
 import { ModalShell } from "../../components/ui/modal";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE_COMPACT,
+} from "./mealModalLayout";
 import { getApiStatus, parseApiError } from "../../utils/validation";
 import { MEAL_TYPE_OPTIONS } from "./FoodEntryModal";
 
@@ -148,7 +153,8 @@ export function BarcodeScannerModal({
       open
       onClose={onClose}
       title="Сканер штрихкода"
-      size="md"
+      size={MEAL_MODAL_SIZE_COMPACT}
+      className={MEAL_MODAL_PANEL_CLASS}
       zIndex={55}
     >
       <div className="space-y-3">

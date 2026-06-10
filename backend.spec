@@ -6,8 +6,10 @@ ROOT = Path.cwd().resolve()
 if ROOT.name.lower() == "frontend":
     ROOT = ROOT.parent
 frontend_dist = (ROOT / "frontend" / "dist").resolve()
-workouts_db = (ROOT / "workouts.db").resolve()
-shared_db = (ROOT / "shared.db").resolve()
+# Use minimal packaging seed DBs — never bundle the developer workouts.db (user data).
+seed_dir = (ROOT / "packaging" / "seed").resolve()
+workouts_db = (seed_dir / "workouts.db").resolve()
+shared_db = (seed_dir / "shared.db").resolve()
 
 a = Analysis(
     ["backend/run_server.py"],
@@ -23,7 +25,14 @@ a = Analysis(
         "uvicorn.protocols.http.auto",
         "uvicorn.logging",
         "uvicorn.lifespan.on",
-    ] + collect_submodules("yadisk"),
+        "httpx",
+        "httpcore",
+        "yadisk.sessions.async_httpx_session",
+        "yadisk.sessions._httpx_common",
+    ]
+    + collect_submodules("yadisk")
+    + collect_submodules("httpx")
+    + collect_submodules("httpcore"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

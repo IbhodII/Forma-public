@@ -24,15 +24,24 @@ def _sh(name: str) -> str:
     return shared_table(name)
 
 
+def _meal_q(conn: sqlite3.Connection, name: str) -> str:
+    """Meal-plan table routing: main after v070/v078, else legacy shared."""
+    from database.meal_plans_storage import MEAL_PLAN_TABLES, meal_plan_schema
+
+    if name not in MEAL_PLAN_TABLES:
+        raise ValueError(f"Not a meal plan table: {name}")
+    schema = meal_plan_schema(conn)
+    if schema == "main":
+        return f"main.{name}"
+    return shared_table(name)
+
+
 _SHARED_PRAGMA_TABLES = frozenset(
     {
         "food_products",
         "food_product_components",
-        "meal_templates",
-        "meal_template_items",
-        "daily_meal_plans",
-        "daily_meal_plan_templates",
         "stretching_exercises",
+        "strength_exercises",
         "tire_coefficients",
         "surface_multipliers",
     }
@@ -41,6 +50,26 @@ _SHARED_PRAGMA_TABLES = frozenset(
 
 def _pragma_cols(conn: sqlite3.Connection, table: str) -> set[str]:
     """Список колонок таблицы main или attached shared (не PRAGMA table_info('shared.t'))."""
+    from database.meal_plans_storage import MEAL_PLAN_TABLES, meal_plan_schema
+
+    if table in MEAL_PLAN_TABLES:
+        schema = meal_plan_schema(conn)
+        if schema == "main":
+            rows = conn.execute(f"PRAGMA table_info({table!r})").fetchall()
+            return {r[1] for r in rows}
+        if not is_shared_attached(conn):
+            attach_shared(conn)
+        try:
+            rows = conn.execute(
+                "SELECT name FROM pragma_table_info(?, ?)",
+                (table, SHARED_SCHEMA),
+            ).fetchall()
+            return {r[0] for r in rows}
+        except sqlite3.OperationalError:
+            rows = conn.execute(
+                f"PRAGMA {SHARED_SCHEMA}.table_info({table!r})"
+            ).fetchall()
+            return {r[1] for r in rows}
     if table in _SHARED_PRAGMA_TABLES:
         if not is_shared_attached(conn):
             attach_shared(conn)
@@ -87,6 +116,14 @@ _SHARED_INDEX_DEFS: tuple[tuple[str, str, str, str | None, bool], ...] = (
         "original_name IS NOT NULL",
         True,
     ),
+    ("strength_exercises", "idx_strength_exercises_category", "exercise_category", None, False),
+    (
+        "stretching_exercises",
+        "idx_stretching_exercises_category",
+        "exercise_category",
+        None,
+        False,
+    ),
 )
 
 
@@ -123,13 +160,14 @@ except ImportError:
 
 def _ensure_meal_template_item_macros(conn: sqlite3.Connection) -> None:
     """БЖУ/ккал на 100 г для строки шаблона (если в Excel отличаются от справочника)."""
+    mti = _meal_q(conn, "meal_template_items")
     cols = _pragma_cols(conn, "meal_template_items")
     if not cols:
         return
 
     for col in ("protein", "fat", "carbs", "calories"):
         if col not in cols:
-            conn.execute(f"ALTER TABLE meal_template_items ADD COLUMN {col} REAL")
+            conn.execute(f"ALTER TABLE {mti} ADD COLUMN {col} REAL")
 
 
 def _ensure_food_entry_macro_snapshot(conn: sqlite3.Connection) -> None:
@@ -164,7 +202,7 @@ def _ensure_food_products_unified_schema(conn: sqlite3.Connection) -> None:
     conn.row_factory = sqlite3.Row
     fp = _sh("food_products")
     fpc = _sh("food_product_components")
-    mti = _sh("meal_template_items")
+    mti = _meal_q(conn, "meal_template_items")
     cols = _pragma_cols(conn, "food_products")
     if not cols:
         return
@@ -287,7 +325,7 @@ def _ensure_food_products_unified_schema(conn: sqlite3.Connection) -> None:
 
 def _ensure_meal_template_extended_schema(conn: sqlite3.Connection) -> None:
     """source (лист Excel), description у рационов."""
-    mt, dmp = _sh("meal_templates"), _sh("daily_meal_plans")
+    mt, dmp = _meal_q(conn, "meal_templates"), _meal_q(conn, "daily_meal_plans")
     tpl_cols = _pragma_cols(conn, "meal_templates")
     if tpl_cols and "source" not in tpl_cols:
         conn.execute(
@@ -318,7 +356,7 @@ def _ensure_meal_template_extended_schema(conn: sqlite3.Connection) -> None:
 
 def _ensure_daily_meal_plans_is_custom(conn: sqlite3.Connection) -> None:
     """Флаг пользовательских рационов (не перезаписывать при импорте Excel)."""
-    dmp = _sh("daily_meal_plans")
+    dmp = _meal_q(conn, "daily_meal_plans")
     plan_cols = _pragma_cols(conn, "daily_meal_plans")
     if plan_cols and "is_custom" not in plan_cols:
         conn.execute(
@@ -556,8 +594,8 @@ def _migration_v001_workout_metric_columns(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
             type TEXT,
-            duration_sec INTEGER,
-            distance_km REAL,
+            duration REAL,
+            distance REAL,
             avg_hr INTEGER,
             max_hr INTEGER,
             calories INTEGER,
@@ -1448,30 +1486,28 @@ def _migration_v034_openfoodfacts(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    # Prefer CREATE INDEX through ATTACH to avoid a second shared.db connection (Windows lock).
-    # Fallback to direct shared.db only for legacy SQLite builds with schema-qualified index syntax issues.
-    idx_attached_sql = f"""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_food_products_external_id
-        ON {fp} (external_id)
-        WHERE external_id IS NOT NULL AND external_id != ''
-        """
-    idx_direct_sql = """
+    # В SQLite в некоторых сборках schema-qualified имя (shared.food_products)
+    # для CREATE INDEX даёт "near '.'" синтаксическую ошибку.
+    # Поэтому создаём индекс в отдельном подключении к shared.db.
+    idx_sql = """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_food_products_external_id
         ON food_products (external_id)
         WHERE external_id IS NOT NULL AND external_id != ''
         """
+    detached = False
+    if is_shared_attached(conn):
+        conn.commit()
+        conn.execute(f"DETACH DATABASE {SHARED_SCHEMA}")
+        detached = True
+    sc = sqlite3.connect(SHARED_DB_PATH, timeout=30.0)
     try:
-        conn.execute(idx_attached_sql)
-    except sqlite3.OperationalError as err:
-        if "near" not in str(err).lower() and "syntax" not in str(err).lower():
-            raise
-        sc = sqlite3.connect(SHARED_DB_PATH, timeout=60.0)
-        try:
-            sc.execute("PRAGMA busy_timeout = 60000")
-            sc.execute(idx_direct_sql)
-            sc.commit()
-        finally:
-            sc.close()
+        sc.execute("PRAGMA busy_timeout = 30000")
+        sc.execute(idx_sql)
+        sc.commit()
+    finally:
+        sc.close()
+    if detached:
+        attach_shared(conn)
 
 
 def _migration_v033_food_micro_nutrients(conn: sqlite3.Connection) -> None:
@@ -2277,8 +2313,16 @@ def _migration_v062_steps_bracelet_hc_user_scope(conn: sqlite3.Connection) -> No
 
 def _migration_v063_meal_plans_user_scope(conn: sqlite3.Connection) -> None:
     """Per-user daily_meal_plans and meal_templates in shared.db."""
+    from database.meal_plans_storage import shared_meal_plans_purged
+
     if not is_shared_attached(conn):
         attach_shared(conn)
+    if shared_meal_plans_purged(conn):
+        return
+    if not _table_exists(conn, SHARED_SCHEMA, "meal_templates") and not _table_exists(
+        conn, SHARED_SCHEMA, "daily_meal_plans"
+    ):
+        return
     uid_default = DEFAULT_USER_ID
     dmp = _sh("daily_meal_plans")
     mt = _sh("meal_templates")
@@ -2675,6 +2719,148 @@ def _migration_v069_cardio_type_settings_user_scope(conn: sqlite3.Connection) ->
     )
 
 
+def _meal_plan_table_cols(conn: sqlite3.Connection, schema: str, table: str) -> list[str]:
+    if schema == "main":
+        rows = conn.execute(f"PRAGMA table_info({table!r})").fetchall()
+        return [str(r[1]) for r in rows]
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    try:
+        rows = conn.execute(
+            "SELECT name FROM pragma_table_info(?, ?) ORDER BY cid",
+            (table, schema),
+        ).fetchall()
+        return [str(r[0]) for r in rows]
+    except sqlite3.OperationalError:
+        rows = conn.execute(f"PRAGMA {schema}.table_info({table!r})").fetchall()
+        return [str(r[1]) for r in rows]
+
+
+def _copy_meal_plan_rows_shared_to_main(
+    conn: sqlite3.Connection,
+    table: str,
+    *,
+    or_ignore: bool = False,
+) -> None:
+    """Copy shared meal rows into main using intersecting columns only."""
+    if not _table_exists(conn, SHARED_SCHEMA, table) or not _table_exists(conn, "main", table):
+        return
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    main_cols = _meal_plan_table_cols(conn, "main", table)
+    shared_cols = set(_meal_plan_table_cols(conn, SHARED_SCHEMA, table))
+    cols = [c for c in main_cols if c in shared_cols]
+    if not cols:
+        return
+    col_sql = ", ".join(cols)
+    insert_kw = "INSERT OR IGNORE" if or_ignore else "INSERT"
+    if "id" in cols:
+        conn.execute(
+            f"""
+            {insert_kw} INTO main.{table} ({col_sql})
+            SELECT {col_sql} FROM {SHARED_SCHEMA}.{table} s
+            WHERE s.id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM main.{table} m WHERE m.id = s.id)
+            """
+        )
+    else:
+        conn.execute(
+            f"""
+            {insert_kw} INTO main.{table} ({col_sql})
+            SELECT {col_sql} FROM {SHARED_SCHEMA}.{table}
+            """
+        )
+
+
+def _ensure_main_meal_plan_tables(conn: sqlite3.Connection) -> None:
+    """Bootstrap meal-plan DDL in workouts.db when shared legacy tables are absent."""
+    if _table_exists(conn, "main", "meal_templates"):
+        _ensure_meal_template_extended_schema(conn)
+        _ensure_meal_template_item_macros(conn)
+        _ensure_weekly_meal_schedule(conn)
+        return
+
+    conn.execute(
+        """
+        CREATE TABLE main.meal_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
+            meal_type TEXT NOT NULL,
+            phase TEXT NOT NULL DEFAULT 'cut',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            source TEXT NOT NULL DEFAULT '',
+            UNIQUE(user_id, name)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE main.meal_template_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity REAL NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES meal_templates(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE main.daily_meal_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            description TEXT,
+            is_custom INTEGER NOT NULL DEFAULT 0,
+            is_weekly INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(user_id, name)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE main.daily_meal_plan_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            template_id INTEGER NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (plan_id) REFERENCES daily_meal_plans(id) ON DELETE CASCADE,
+            FOREIGN KEY (template_id) REFERENCES meal_templates(id) ON DELETE CASCADE,
+            UNIQUE(plan_id, template_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE main.meal_plan_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            day_offset INTEGER NOT NULL DEFAULT 0,
+            meal_type TEXT NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity REAL NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES daily_meal_plans(id) ON DELETE CASCADE
+        )
+        """
+    )
+    _ensure_meal_template_extended_schema(conn)
+    _ensure_meal_template_item_macros(conn)
+    _ensure_weekly_meal_schedule(conn)
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS idx_meal_template_items_tid ON meal_template_items(template_id)",
+        "CREATE INDEX IF NOT EXISTS idx_meal_plan_templates_plan ON daily_meal_plan_templates(plan_id, sort_order)",
+        "CREATE INDEX IF NOT EXISTS idx_daily_meal_plans_user ON daily_meal_plans(user_id, phase, is_custom)",
+        "CREATE INDEX IF NOT EXISTS idx_meal_templates_user ON meal_templates(user_id, phase)",
+    ):
+        try:
+            conn.execute(sql)
+        except sqlite3.Error:
+            pass
+
+
 def _migration_v070_meal_plans_to_workouts(conn: sqlite3.Connection) -> None:
     """Copy per-user meal plan tables shared → workouts; preserve ids; keep shared for dual-read."""
     from database.meal_plans_storage import (
@@ -2723,14 +2909,7 @@ def _migration_v070_meal_plans_to_workouts(conn: sqlite3.Connection) -> None:
                     f"SELECT * FROM {SHARED_SCHEMA}.{table} WHERE 0"
                 )
         main_n = conn.execute(f"SELECT COUNT(*) FROM main.{table}").fetchone()[0]
-        if main_n == 0:
-            conn.execute(
-                f"INSERT INTO main.{table} SELECT * FROM {SHARED_SCHEMA}.{table}"
-            )
-        else:
-            conn.execute(
-                f"INSERT OR IGNORE INTO main.{table} SELECT * FROM {SHARED_SCHEMA}.{table}"
-            )
+        _copy_meal_plan_rows_shared_to_main(conn, table, or_ignore=main_n > 0)
 
     for sql in (
         "CREATE INDEX IF NOT EXISTS idx_meal_template_items_tid ON meal_template_items(template_id)",
@@ -2811,6 +2990,144 @@ def _migration_v073_all_exercises_archive(conn: sqlite3.Connection) -> None:
     _ensure_all_exercises_schema(conn)
 
 
+def _migration_v075_strength_catalog_shared(conn: sqlite3.Connection) -> None:
+    """Справочник силовых упражнений в shared.db; пользовательские — в user_strength_exercises."""
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    _ensure_shared_strength_exercises(conn)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_strength_exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_strength_exercises_user_name
+        ON user_strength_exercises(user_id, name COLLATE NOCASE)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_strength_exercises_user_archived
+        ON user_strength_exercises(user_id, is_archived, name COLLATE NOCASE)
+        """
+    )
+    _migrate_legacy_all_exercises_names(conn)
+
+
+def _migrate_legacy_all_exercises_names(conn: sqlite3.Connection) -> None:
+    """Перенос оставшихся имён из legacy all_exercises в user_strength_exercises (идемпотентно)."""
+    if not _table_exists(conn, "main", "all_exercises"):
+        return
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    se = _sh("strength_exercises")
+    shared_names = {
+        str(row[0] or "").strip().casefold()
+        for row in conn.execute(f"SELECT name FROM {se}")
+        if str(row[0] or "").strip()
+    }
+    rows = conn.execute(
+        """
+        SELECT name, created_at, COALESCE(is_archived, 0), updated_at
+        FROM all_exercises
+        WHERE TRIM(name) != ''
+        """
+    ).fetchall()
+    for name, created_at, is_archived, updated_at in rows:
+        title = str(name or "").strip()
+        if not title or title.casefold() in shared_names:
+            continue
+        user_rows = conn.execute(
+            """
+            SELECT DISTINCT user_id FROM strength_workouts
+            WHERE exercise = ? COLLATE NOCASE
+            UNION
+            SELECT DISTINCT user_id FROM preset_exercises
+            WHERE exercise_name = ? COLLATE NOCASE
+            UNION
+            SELECT DISTINCT es.user_id
+            FROM exercise_set_items esi
+            INNER JOIN exercise_sets es ON es.id = esi.set_id
+            WHERE esi.exercise_name = ? COLLATE NOCASE
+            """,
+            (title, title, title),
+        ).fetchall()
+        user_ids = [int(r[0]) for r in user_rows if r and r[0] is not None]
+        if not user_ids:
+            user_ids = [1]
+        for uid in user_ids:
+            try:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO user_strength_exercises
+                        (user_id, name, exercise_category, is_archived, created_at, updated_at)
+                    VALUES (?, ?, 'strength', ?, ?, ?)
+                    """,
+                    (uid, title, int(is_archived or 0), created_at, updated_at),
+                )
+            except sqlite3.Error:
+                pass
+
+
+def _migration_v076_exercise_names_shared_only(conn: sqlite3.Connection) -> None:
+    """Справочник имён только в shared.db + user_strength_exercises; legacy all_exercises не пополняется."""
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    _ensure_shared_strength_exercises(conn)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_strength_exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+        """
+    )
+    _migrate_legacy_all_exercises_names(conn)
+
+
+def _migration_v077_exercise_category_separation(conn: sqlite3.Connection) -> None:
+    """
+    exercise_category: authoritative strength vs stretching separation.
+    Removes unreferenced free-exercise-db pollution from strength catalog.
+    """
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    _ensure_shared_strength_exercises(conn)
+    _ensure_shared_stretching_exercises(conn)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_strength_exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+        """
+    )
+    from database.exercise_category import run_exercise_category_migration
+
+    run_exercise_category_migration(
+        conn,
+        strength_table=_sh("strength_exercises"),
+        stretching_table=_sh("stretching_exercises"),
+    )
+    _ensure_shared_indexes()
+
+
 def _migration_v074_calorie_calibration_history(conn: sqlite3.Connection) -> None:
     """Adaptive calorie calibration history by analysis window."""
     conn.execute(
@@ -2850,35 +3167,6 @@ def _migration_v074_calorie_calibration_history(conn: sqlite3.Connection) -> Non
                 last_calibration_date = NULL
             WHERE calibration_factor IS NOT NULL
               AND ABS(calibration_factor - 1.0) > 0.0001
-            """
-        )
-
-
-def _migration_v075_cardio_duration_distance_columns(conn: sqlite3.Connection) -> None:
-    """Legacy v001 fresh installs used duration/distance; app code expects duration_sec/distance_km."""
-    if not _table_exists(conn, "main", "cardio_workouts"):
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(cardio_workouts)")}
-    if "duration_sec" not in cols:
-        conn.execute("ALTER TABLE cardio_workouts ADD COLUMN duration_sec INTEGER")
-    if "distance_km" not in cols:
-        conn.execute("ALTER TABLE cardio_workouts ADD COLUMN distance_km REAL")
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(cardio_workouts)")}
-    if "duration" in cols:
-        conn.execute(
-            """
-            UPDATE cardio_workouts
-            SET duration_sec = COALESCE(duration_sec, CAST(duration AS INTEGER))
-            WHERE duration IS NOT NULL
-              AND (duration_sec IS NULL OR duration_sec = 0)
-            """
-        )
-    if "distance" in cols:
-        conn.execute(
-            """
-            UPDATE cardio_workouts
-            SET distance_km = COALESCE(distance_km, distance)
-            WHERE distance IS NOT NULL AND distance_km IS NULL
             """
         )
 
@@ -3166,6 +3454,317 @@ def _migration_v054_workout_source_resolver(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE user_profile ADD COLUMN source_priority_prefs TEXT")
 
 
+def _migration_v078_cardio_duration_distance_km(conn: sqlite3.Connection) -> None:
+    """v001 baseline used duration/distance; API expects duration_sec/distance_km."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cardio_workouts)")}
+    if "duration_sec" not in cols:
+        conn.execute("ALTER TABLE cardio_workouts ADD COLUMN duration_sec INTEGER")
+        if "duration" in cols:
+            conn.execute(
+                """
+                UPDATE cardio_workouts
+                SET duration_sec = CAST(duration AS INTEGER)
+                WHERE duration IS NOT NULL
+                  AND (duration_sec IS NULL OR duration_sec = 0)
+                """
+            )
+    if "distance_km" not in cols:
+        conn.execute("ALTER TABLE cardio_workouts ADD COLUMN distance_km REAL")
+        if "distance" in cols:
+            conn.execute(
+                """
+                UPDATE cardio_workouts
+                SET distance_km = distance
+                WHERE distance IS NOT NULL AND distance_km IS NULL
+                """
+            )
+
+
+def _migration_v079_finalize_meal_plans_in_workouts(conn: sqlite3.Connection) -> None:
+    """Reconcile shared meal tables into main, purge legacy copies from shared.db."""
+    from database.meal_plans_storage import (
+        MEAL_INDEX_NAMES,
+        MEAL_PLAN_COPY_ORDER,
+        MEAL_PLAN_DROP_ORDER,
+        META_MEAL_PLANS_IN_WORKOUTS,
+        META_SHARED_MEAL_PLANS_PURGED,
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = ?",
+            (META_SHARED_MEAL_PLANS_PURGED,),
+        ).fetchone()
+        if row is not None and str(row[0]) == "1":
+            _ensure_main_meal_plan_tables(conn)
+            return
+    except sqlite3.Error:
+        pass
+
+    _migration_v070_meal_plans_to_workouts(conn)
+
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+
+    for table in MEAL_PLAN_COPY_ORDER:
+        if not _table_exists(conn, SHARED_SCHEMA, table):
+            continue
+        if not _table_exists(conn, "main", table):
+            ddl = conn.execute(
+                f"""
+                SELECT sql FROM {SHARED_SCHEMA}.sqlite_master
+                WHERE type='table' AND name = ?
+                """,
+                (table,),
+            ).fetchone()
+            if ddl and ddl[0]:
+                conn.execute(str(ddl[0]))
+            else:
+                conn.execute(
+                    f"CREATE TABLE main.{table} AS "
+                    f"SELECT * FROM {SHARED_SCHEMA}.{table} WHERE 0"
+                )
+        _copy_meal_plan_rows_shared_to_main(conn, table, or_ignore=True)
+
+    _ensure_main_meal_plan_tables(conn)
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    for table in MEAL_PLAN_DROP_ORDER:
+        if _table_exists(conn, SHARED_SCHEMA, table):
+            conn.execute(f"DROP TABLE {SHARED_SCHEMA}.{table}")
+    for index_name in MEAL_INDEX_NAMES:
+        try:
+            conn.execute(f"DROP INDEX IF EXISTS {SHARED_SCHEMA}.{index_name}")
+        except sqlite3.Error:
+            pass
+    conn.execute("PRAGMA foreign_keys=ON")
+
+    conn.execute(
+        """
+        INSERT INTO app_meta (key, value) VALUES (?, '1')
+        ON CONFLICT(key) DO UPDATE SET value = '1'
+        """,
+        (META_MEAL_PLANS_IN_WORKOUTS,),
+    )
+    conn.execute(
+        """
+        INSERT INTO app_meta (key, value) VALUES (?, '1')
+        ON CONFLICT(key) DO UPDATE SET value = '1'
+        """,
+        (META_SHARED_MEAL_PLANS_PURGED,),
+    )
+    conn.commit()
+
+    if SHARED_DB_PATH.exists():
+        sc = sqlite3.connect(SHARED_DB_PATH, timeout=60.0)
+        try:
+            sc.execute("PRAGMA busy_timeout = 60000")
+            sc.execute("VACUUM")
+            sc.commit()
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            sc.close()
+
+
+META_STRENGTH_CATALOG_IN_SHARED = "strength_catalog_in_shared_v1"
+
+
+def _is_invalid_strength_catalog_key(key: str) -> bool:
+    return not key or key.startswith("_test") or key.startswith("test_")
+
+
+def _merge_strength_catalog_candidate(
+    merged: dict[str, dict[str, Any]],
+    *,
+    key: str,
+    name: str,
+    is_archived: int = 0,
+    created_at: str | None = None,
+) -> None:
+    from database.exercise_category import name_has_cyrillic
+
+    title = str(name or "").strip()
+    if not title:
+        return
+    cand = {
+        "name": title,
+        "is_archived": int(is_archived or 0),
+        "created_at": created_at,
+    }
+    prev = merged.get(key)
+    if prev is None:
+        merged[key] = cand
+        return
+
+    def score(item: dict[str, Any]) -> tuple[int, int, str]:
+        archived_penalty = 1 if int(item.get("is_archived") or 0) else 0
+        cyrillic_bonus = 0 if name_has_cyrillic(str(item.get("name") or "")) else 1
+        created = str(item.get("created_at") or "9999")
+        return (archived_penalty, cyrillic_bonus, created)
+
+    if score(cand) < score(prev):
+        merged[key] = cand
+
+
+def _collect_strength_catalog_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Dedupe strength catalog names from workouts.db sources for shared population."""
+    from database.exercise_category import (
+        collect_referenced_strength_names,
+        collect_stretching_name_keys,
+        is_strength_catalog_name,
+        load_free_exercise_db_categories,
+        normalize_exercise_name_key,
+    )
+
+    json_categories = load_free_exercise_db_categories()
+    stretching_keys = collect_stretching_name_keys(
+        conn, shared_table=_sh("stretching_exercises")
+    )
+    stretching_keys.update(
+        key
+        for key, cat in json_categories.items()
+        if cat == "stretching"
+    )
+
+    merged: dict[str, dict[str, Any]] = {}
+
+    if _table_exists(conn, "main", "all_exercises"):
+        for name, is_archived, created_at, updated_at in conn.execute(
+            """
+            SELECT name, COALESCE(is_archived, 0), created_at, updated_at
+            FROM all_exercises
+            WHERE TRIM(name) != ''
+            """
+        ):
+            title = str(name or "").strip()
+            key = normalize_exercise_name_key(title)
+            if _is_invalid_strength_catalog_key(key):
+                continue
+            if not is_strength_catalog_name(
+                title,
+                json_categories=json_categories,
+                stretching_keys=stretching_keys,
+            ):
+                continue
+            _merge_strength_catalog_candidate(
+                merged,
+                key=key,
+                name=title,
+                is_archived=int(is_archived or 0),
+                created_at=str(created_at or updated_at or ""),
+            )
+
+    if _table_exists(conn, "main", "user_strength_exercises"):
+        for name, is_archived, created_at, updated_at in conn.execute(
+            """
+            SELECT name, COALESCE(is_archived, 0), created_at, updated_at
+            FROM user_strength_exercises
+            WHERE TRIM(name) != ''
+              AND COALESCE(exercise_category, 'strength') = 'strength'
+            """
+        ):
+            title = str(name or "").strip()
+            key = normalize_exercise_name_key(title)
+            if _is_invalid_strength_catalog_key(key):
+                continue
+            if not is_strength_catalog_name(
+                title,
+                json_categories=json_categories,
+                stretching_keys=stretching_keys,
+            ):
+                continue
+            _merge_strength_catalog_candidate(
+                merged,
+                key=key,
+                name=title,
+                is_archived=int(is_archived or 0),
+                created_at=str(created_at or updated_at or ""),
+            )
+
+    for raw in collect_referenced_strength_names(conn):
+        title = str(raw or "").strip()
+        key = normalize_exercise_name_key(title)
+        if _is_invalid_strength_catalog_key(key):
+            continue
+        if not is_strength_catalog_name(
+            title,
+            json_categories=json_categories,
+            stretching_keys=stretching_keys,
+        ):
+            continue
+        _merge_strength_catalog_candidate(
+            merged,
+            key=key,
+            name=title,
+            is_archived=0,
+            created_at="",
+        )
+
+    return list(merged.values())
+
+
+def _migration_v080_strength_catalog_populate_shared(conn: sqlite3.Connection) -> None:
+    """Populate shared.strength_exercises from deduplicated workouts.db catalog names."""
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = ?",
+            (META_STRENGTH_CATALOG_IN_SHARED,),
+        ).fetchone()
+        if row is not None and str(row[0]) == "1":
+            return
+    except sqlite3.Error:
+        pass
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    _ensure_shared_strength_exercises(conn)
+
+    se = _sh("strength_exercises")
+    for item in _collect_strength_catalog_candidates(conn):
+        title = str(item.get("name") or "").strip()
+        if not title:
+            continue
+        is_time = 1 if _strength_exercise_is_time_based(title) else 0
+        try:
+            conn.execute(
+                f"""
+                INSERT OR IGNORE INTO {se}
+                    (name, category, exercise_category, is_time_based)
+                VALUES (?, 'strength', 'strength', ?)
+                """,
+                (title, is_time),
+            )
+        except sqlite3.Error:
+            pass
+
+    conn.execute(
+        """
+        INSERT INTO app_meta (key, value) VALUES (?, '1')
+        ON CONFLICT(key) DO UPDATE SET value = '1'
+        """,
+        (META_STRENGTH_CATALOG_IN_SHARED,),
+    )
+
+
 _SCHEMA_MIGRATIONS: tuple[tuple[int, Any], ...] = (
     (1, _migration_v001_workout_metric_columns),
     (2, _migration_v002_body_metrics),
@@ -3240,7 +3839,12 @@ _SCHEMA_MIGRATIONS: tuple[tuple[int, Any], ...] = (
     (72, _migration_v072_exercise_set_block_metadata),
     (73, _migration_v073_all_exercises_archive),
     (74, _migration_v074_calorie_calibration_history),
-    (75, _migration_v075_cardio_duration_distance_columns),
+    (75, _migration_v075_strength_catalog_shared),
+    (76, _migration_v076_exercise_names_shared_only),
+    (77, _migration_v077_exercise_category_separation),
+    (78, _migration_v078_cardio_duration_distance_km),
+    (79, _migration_v079_finalize_meal_plans_in_workouts),
+    (80, _migration_v080_strength_catalog_populate_shared),
 )
 
 SCHEMA_VERSION = _SCHEMA_MIGRATIONS[-1][0]
@@ -3261,32 +3865,19 @@ def run_schema_migrations(conn: sqlite3.Connection) -> int:
 
 def ensure_db_schema() -> None:
     """Миграции workouts.db + shared.db по schema_version."""
-    import time
+    conn = open_db(attach=True)
+    try:
+        run_schema_migrations(conn)
+        _ensure_cloud_tokens_table(conn)
+        from database.shared_schema import ensure_shared_schema as _ensure_shared
 
-    last_err: Exception | None = None
-    for attempt in range(5):
-        conn = open_db(attach=True)
-        try:
-            run_schema_migrations(conn)
-            _ensure_cloud_tokens_table(conn)
-            from database.shared_schema import ensure_shared_schema as _ensure_shared
+        _ensure_shared(conn)
+        conn.commit()
+        from backend.services.auth_user_service import ensure_auth_schema
 
-            _ensure_shared(conn)
-            conn.commit()
-            from backend.services.auth_user_service import ensure_auth_schema
-
-            ensure_auth_schema()
-            last_err = None
-            break
-        except sqlite3.OperationalError as err:
-            last_err = err
-            if "locked" not in str(err).lower() or attempt >= 4:
-                raise
-            time.sleep(0.4 * (attempt + 1))
-        finally:
-            conn.close()
-    if last_err is not None:
-        raise last_err
+        ensure_auth_schema()
+    finally:
+        conn.close()
     _ensure_shared_indexes()
 
 
@@ -4528,25 +5119,15 @@ def _stretching_muscle_ru(name: str) -> str:
     return _STRETCHING_MUSCLE_RU.get(name.strip().lower(), name.strip())
 
 
-def _ensure_shared_food_catalog(conn: sqlite3.Connection) -> None:
-    """Справочники питания в shared.db."""
-    fp = _sh("food_products")
+def _ensure_legacy_shared_meal_plan_tables(conn: sqlite3.Connection) -> None:
+    """Bootstrap meal tables in shared.db for migrations before v079 purge."""
+    from database.meal_plans_storage import shared_meal_plans_purged
+
+    if shared_meal_plans_purged(conn):
+        return
+
     mt, mti = _sh("meal_templates"), _sh("meal_template_items")
     dmp, dmpt = _sh("daily_meal_plans"), _sh("daily_meal_plan_templates")
-    conn.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {fp} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-            protein REAL,
-            fat REAL,
-            carbs REAL,
-            calories REAL,
-            unit TEXT NOT NULL DEFAULT 'g',
-            is_composite INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {mt} (
@@ -4615,9 +5196,100 @@ def _ensure_shared_food_catalog(conn: sqlite3.Connection) -> None:
     )
     _ensure_meal_template_extended_schema(conn)
     _ensure_meal_template_item_macros(conn)
+
+
+def _ensure_shared_food_catalog(conn: sqlite3.Connection) -> None:
+    """Food reference catalog in shared.db; legacy meal bootstrap until v079 purge."""
+    _ensure_legacy_shared_meal_plan_tables(conn)
+    fp = _sh("food_products")
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {fp} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            protein REAL,
+            fat REAL,
+            carbs REAL,
+            calories REAL,
+            unit TEXT NOT NULL DEFAULT 'g',
+            is_composite INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
     _ensure_food_product_components(conn)
     _ensure_food_products_unified_schema(conn)
     _ensure_food_phase_products(conn)
+
+
+def _strength_exercise_is_time_based(name: str) -> bool:
+    n = str(name or "").strip().lower().replace("ё", "е")
+    if "планк" in n:
+        return True
+    if "plank" in n:
+        return True
+    if "wall sit" in n or "hollow hold" in n:
+        return True
+    return False
+
+
+def _ensure_shared_strength_exercises(conn: sqlite3.Connection) -> None:
+    """Справочник силовых упражнений (shared.db)."""
+    se = _sh("strength_exercises")
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {se} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            category TEXT,
+            exercise_category TEXT NOT NULL DEFAULT 'strength',
+            primary_muscles TEXT,
+            equipment TEXT,
+            is_time_based INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    cols = _pragma_cols(conn, "strength_exercises")
+    if "is_time_based" not in cols:
+        conn.execute(f"ALTER TABLE {se} ADD COLUMN is_time_based INTEGER NOT NULL DEFAULT 0")
+    if "exercise_category" not in cols:
+        conn.execute(
+            f"ALTER TABLE {se} ADD COLUMN exercise_category TEXT NOT NULL DEFAULT 'strength'"
+        )
+    # Shared strength catalog is populated from user history and explicit imports only.
+    # Bulk free-exercise-db seeding polluted strength selectors (v077 cleanup).
+
+
+def _seed_strength_exercises(conn: sqlite3.Connection) -> None:
+    """Наполнение из free-exercise-db (category=strength)."""
+    if not _STRETCHING_EXERCISES_JSON.is_file():
+        return
+    try:
+        raw = json.loads(_STRETCHING_EXERCISES_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    se = _sh("strength_exercises")
+    for item in raw:
+        if str(item.get("category") or "").lower() != "strength":
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        muscles = item.get("primaryMuscles") or []
+        muscle_txt = ", ".join(str(m).strip() for m in muscles if m)
+        equipment = item.get("equipment")
+        equip_txt = ", ".join(str(e).strip() for e in equipment) if isinstance(equipment, list) else str(equipment or "")
+        is_time = 1 if _strength_exercise_is_time_based(name) else 0
+        try:
+            conn.execute(
+                f"""
+                INSERT OR IGNORE INTO {se}
+                    (name, category, exercise_category, primary_muscles, equipment, is_time_based)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (name, "strength", "strength", muscle_txt or None, equip_txt or None, is_time),
+            )
+        except sqlite3.Error:
+            pass
 
 
 def _ensure_shared_stretching_exercises(conn: sqlite3.Connection) -> None:
@@ -4630,11 +5302,16 @@ def _ensure_shared_stretching_exercises(conn: sqlite3.Connection) -> None:
             name TEXT NOT NULL UNIQUE,
             target_muscle_group TEXT,
             description TEXT,
-            original_name TEXT
+            original_name TEXT,
+            exercise_category TEXT NOT NULL DEFAULT 'stretching'
         )
         """
     )
     stretch_cols = _pragma_cols(conn, "stretching_exercises")
+    if "exercise_category" not in stretch_cols:
+        conn.execute(
+            f"ALTER TABLE {se} ADD COLUMN exercise_category TEXT NOT NULL DEFAULT 'stretching'"
+        )
     if "original_name" not in stretch_cols:
         conn.execute(f"ALTER TABLE {se} ADD COLUMN original_name TEXT")
     if "translated" not in stretch_cols:
@@ -4679,7 +5356,7 @@ def _ensure_shared_stretching_exercises(conn: sqlite3.Connection) -> None:
 
 def ensure_all_exercises_catalog(conn: sqlite3.Connection | None = None) -> None:
     """
-    Создаёт all_exercises и заполняет из истории (идемпотентно).
+    Справочник названий силовых упражнений: shared.strength_exercises + user_strength_exercises.
     Можно вызывать отдельно, если полная ensure_db_schema не успела из‑за блокировки БД.
     """
     own = conn is None
@@ -4687,6 +5364,22 @@ def ensure_all_exercises_catalog(conn: sqlite3.Connection | None = None) -> None
         conn = sqlite3.connect(DB_PATH, timeout=30.0)
         conn.execute("PRAGMA busy_timeout = 30000")
     try:
+        if not is_shared_attached(conn):
+            attach_shared(conn)
+        _ensure_shared_strength_exercises(conn)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_strength_exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                name TEXT NOT NULL,
+                exercise_category TEXT NOT NULL DEFAULT 'strength',
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+            """
+        )
         _ensure_all_exercises_schema(conn)
         if own:
             conn.commit()
@@ -4696,7 +5389,7 @@ def ensure_all_exercises_catalog(conn: sqlite3.Connection | None = None) -> None
 
 
 def _ensure_all_exercises_schema(conn: sqlite3.Connection) -> None:
-    """Глобальный справочник названий силовых упражнений."""
+    """Legacy-таблица all_exercises (только схема, без наполнения из истории)."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS strength_workouts (
@@ -4726,14 +5419,6 @@ def _ensure_all_exercises_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_all_exercises_active_name "
         "ON all_exercises(is_archived, name COLLATE NOCASE)"
-    )
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO all_exercises (name)
-        SELECT DISTINCT TRIM(exercise)
-        FROM strength_workouts
-        WHERE exercise IS NOT NULL AND TRIM(exercise) != ''
-        """
     )
 
 
@@ -4785,6 +5470,9 @@ def _ensure_menstrual_cycle_schema(conn: sqlite3.Connection) -> None:
 
 def _ensure_stretching_personal_schema(conn: sqlite3.Connection) -> None:
     """Пресеты и журнал растяжки (workouts.db)."""
+    if not is_shared_attached(conn):
+        attach_shared(conn)
+    _ensure_shared_stretching_exercises(conn)
     se = _sh("stretching_exercises")
     conn.execute(
         """
@@ -4865,8 +5553,9 @@ def _seed_stretching_exercises(conn: sqlite3.Connection) -> None:
         try:
             conn.execute(
                 f"""
-                INSERT OR IGNORE INTO {_sh('stretching_exercises')} (name, target_muscle_group, description)
-                VALUES (?, ?, ?)
+                INSERT OR IGNORE INTO {_sh('stretching_exercises')}
+                    (name, target_muscle_group, description, exercise_category)
+                VALUES (?, ?, ?, 'stretching')
                 """,
                 (name, muscle_ru or None, description),
             )

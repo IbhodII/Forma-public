@@ -246,23 +246,78 @@ def mask_auth_url_preview(
     return f"{base}?client_id={cid}&redirect_uri={encoded_redirect}&…"
 
 
-def _provider_env_status(provider: Provider) -> dict[str, Any]:
+def _yandex_provider_env_status() -> dict[str, Any]:
     _load_env()
-    client_id = os.getenv(_ENV_CLIENT_ID_KEYS[provider], "").strip()
-    client_secret = os.getenv(_ENV_CLIENT_SECRET_KEYS[provider], "").strip()
-    env_redirect = _env_redirect_uri(provider)
-    from backend.core.env import yandex_oauth_configured, google_oauth_configured
-
-    configured = (
-        yandex_oauth_configured() if provider == "yandex" else google_oauth_configured()
+    client_id = os.getenv("YANDEX_CLIENT_ID", "").strip()
+    client_secret = os.getenv("YANDEX_CLIENT_SECRET", "").strip()
+    env_redirect = _env_redirect_uri("yandex")
+    from backend.core.env import (
+        yandex_oauth_connectable,
+        yandex_oauth_flow_mode,
+        yandex_oauth_ready,
+        yandex_oauth_redirect_configured,
     )
+
+    flow_mode = yandex_oauth_flow_mode()
+    secret_required = flow_mode == "confidential"
+    configured = yandex_oauth_ready()
+    setup_required = False
+    if not client_id or not yandex_oauth_redirect_configured():
+        setup_required = True
+    elif secret_required and not client_secret:
+        setup_required = True
     return {
         "configured": configured,
         "client_id_present": bool(client_id),
         "client_secret_present": bool(client_secret),
-        "client_id_preview": mask_client_id(client_id),
+        "client_id_preview": mask_client_id(client_id) if client_id else None,
         "env_redirect_uri": env_redirect or None,
+        "setup_required": setup_required,
+        "oauth_flow_mode": flow_mode,
+        "secret_required": secret_required,
+        "pkce_available": flow_mode == "pkce" and yandex_oauth_connectable(),
     }
+
+
+def _google_provider_env_status() -> dict[str, Any]:
+    _load_env()
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    env_redirect = _env_redirect_uri("google")
+    from backend.core.env import (
+        google_oauth_connectable,
+        google_oauth_flow_mode,
+        google_oauth_ready,
+        google_oauth_redirect_configured,
+    )
+
+    flow_mode = google_oauth_flow_mode()
+    secret_required = flow_mode == "confidential"
+    configured = google_oauth_ready()
+    setup_required = False
+    if not client_id or not google_oauth_redirect_configured():
+        setup_required = True
+    elif secret_required and not client_secret:
+        setup_required = True
+    return {
+        "configured": configured,
+        "client_id_present": bool(client_id),
+        "client_secret_present": bool(client_secret),
+        "client_id_preview": mask_client_id(client_id) if client_id else None,
+        "env_redirect_uri": env_redirect or None,
+        "setup_required": setup_required,
+        "oauth_flow_mode": flow_mode,
+        "secret_required": secret_required,
+        "pkce_available": flow_mode == "pkce" and google_oauth_connectable(),
+    }
+
+
+def _provider_env_status(provider: Provider) -> dict[str, Any]:
+    if provider == "yandex":
+        return _yandex_provider_env_status()
+    if provider == "google":
+        return _google_provider_env_status()
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 def _alternate_redirect_uris() -> list[str]:
@@ -355,8 +410,34 @@ def build_oauth_debug_snapshot(
     )
     if not providers_out["google"]["client_id_present"]:
         all_warnings.append("GOOGLE_CLIENT_ID не задан в .env")
+    elif providers_out["google"].get("oauth_flow_mode") == "confidential":
+        if not providers_out["google"]["client_secret_present"]:
+            all_warnings.append(
+                "GOOGLE_OAUTH_FLOW=confidential требует GOOGLE_CLIENT_SECRET в .env"
+            )
+    elif providers_out["google"].get("pkce_available"):
+        all_warnings.append(
+            "Google OAuth: режим PKCE — client_secret не требуется для входа"
+        )
+    elif not providers_out["google"].get("redirect_uri"):
+        all_warnings.append(
+            "Google redirect URI не задан — укажите GOOGLE_REDIRECT_URI или PUBLIC_API_BASE_URL"
+        )
     if not providers_out["yandex"]["client_id_present"]:
         all_warnings.append("YANDEX_CLIENT_ID не задан в .env")
+    elif providers_out["yandex"].get("oauth_flow_mode") == "confidential":
+        if not providers_out["yandex"]["client_secret_present"]:
+            all_warnings.append(
+                "YANDEX_OAUTH_FLOW=confidential требует YANDEX_CLIENT_SECRET в .env"
+            )
+    elif providers_out["yandex"].get("pkce_available"):
+        all_warnings.append(
+            "Yandex OAuth: режим PKCE — client_secret не требуется для входа"
+        )
+    elif not providers_out["yandex"].get("redirect_uri"):
+        all_warnings.append(
+            "Yandex redirect URI не задан — укажите YANDEX_REDIRECT_URI или PUBLIC_API_BASE_URL"
+        )
 
     from backend.services.polar_oauth_service import build_polar_oauth_debug
 
@@ -371,6 +452,11 @@ def build_oauth_debug_snapshot(
         )
     if not polar_debug.get("client_id_present"):
         all_warnings.append("POLAR_CLIENT_ID не задан в .env")
+    elif not polar_debug.get("client_secret_present"):
+        all_warnings.append(
+            "POLAR_CLIENT_SECRET не задан — вход в Polar отключён на этом сервере "
+            "(добавьте секрет в локальный .env, не в установщик)."
+        )
 
     seen_w: set[str] = set()
     unique_warnings: list[str] = []

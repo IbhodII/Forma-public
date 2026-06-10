@@ -23,6 +23,13 @@ import {
   type MicroNutrientKey,
 } from "../../shared/microNutrients";
 import { ModalShell } from "../../components/ui/modal";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE,
+} from "./mealModalLayout";
+
+const ADD_PRODUCT_FORM_ID = "add-product-form";
 import { getApiStatus, parseApiError } from "../../utils/validation";
 import {
   fieldsFromFoodProduct,
@@ -605,7 +612,30 @@ export function AddProductModal({
 
   return (
     <>
-    <ModalShell open onClose={requestClose} dismissOnOverlay={false} title={modalTitle} size="md" zIndex={50}>
+    <ModalShell
+      open
+      onClose={requestClose}
+      dismissOnOverlay={false}
+      title={modalTitle}
+      size={MEAL_MODAL_SIZE}
+      className={MEAL_MODAL_PANEL_CLASS}
+      zIndex={50}
+      footer={
+        <>
+          <button type="button" onClick={requestClose} className="btn-secondary">
+            Отмена
+          </button>
+          <button
+            type="submit"
+            form={ADD_PRODUCT_FORM_ID}
+            disabled={savePending || !canSubmit}
+            className="btn-primary"
+          >
+            {submitLabel}
+          </button>
+        </>
+      }
+    >
       {!initialPreview && !isEdit && (
         <div className="flex gap-2 mb-3">
           <button
@@ -782,7 +812,7 @@ export function AddProductModal({
             запись.
           </p>
         )}
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form id={ADD_PRODUCT_FORM_ID} onSubmit={handleSubmit} className="space-y-3">
         <label className="text-sm block">
           Штрихкод (опционально)
           <div className="flex gap-2 mt-1">
@@ -946,18 +976,6 @@ export function AddProductModal({
             ? "Изменения применятся к справочнику; записи в дневнике используют актуальные данные продукта."
             : "Продукт попадёт в общий справочник (доступен и для сушки, и для набора)."}
         </p>
-        <div className="flex gap-2 pt-2">
-          <button
-            type="submit"
-            disabled={savePending || !canSubmit}
-            className="btn-primary"
-          >
-            {submitLabel}
-          </button>
-          <button type="button" onClick={requestClose} className="btn-secondary">
-            Отмена
-          </button>
-        </div>
       </form>
     </ModalShell>
     <ConfirmModal

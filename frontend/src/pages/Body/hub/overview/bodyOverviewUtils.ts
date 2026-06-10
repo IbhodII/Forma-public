@@ -90,7 +90,7 @@ export function weightSparkTrend30(values: number[]): {
   label: string;
 } {
   if (values.length < 2) return { diff: null, label: "мало данных за 30 дн." };
-  return sparkTrendFromValues(values, { unit: "кг", periodLabel: "30 дн." });
+  return sparkTrendFromValues(values, { unit: "кг", periodLabel: "30 дн.", decimals: 2 });
 }
 
 export function sparkTrendFromValues(

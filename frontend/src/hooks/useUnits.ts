@@ -12,16 +12,19 @@ import {
   kcalToIcharge,
   kgToAmericanWeight,
   formatDistanceKm,
+  formatPaceMinPerKmAmerican,
+  formatSpeedKmhAmerican,
   kgToJapanese,
-  kmhToSolPerHour,
   metersToRushmores,
   mlToSyringes,
-  paceMinPerKmToMinPerSol,
   SECONDS_PER_FEP,
   secondsToFep,
   secondsToSb,
   wattsToIchargePerMin,
 } from "../utils/americanUnits";
+import { formatPaceMinPerKm } from "../utils/format";
+
+const AMERICAN_INPUT_NUMBER_OPTS = { allowFraction: false } as const;
 import { useUserProfile } from "./useUserProfile";
 
 export type UnitsFormatters = {
@@ -35,8 +38,10 @@ export type UnitsFormatters = {
   parseBarbellWeightInput: (value: number, unit: string) => number;
   /** Рост (см → см / Tp). */
   formatHeight: (cm: number) => string;
-  /** Обхваты — всегда в сантиметрах. */
+  /** Обхваты тела (см → см / Dk). */
   formatCircumference: (cm: number) => string;
+  /** Изменение обхвата со знаком (см → см / Dk). */
+  formatCircumferenceChange: (cmChange: number) => string;
   /** Силовой тоннаж / объём нагрузки (сумма кг×повторения); в american — японцы (Jp). */
   formatLoad: (kg: number) => string;
   formatLength: (cm: number) => string;
@@ -57,6 +62,12 @@ export type UnitsFormatters = {
   formatPower: (watts: number) => string;
   /** Дистанция; вход в километрах. */
   formatDistance: (km: number) => string;
+  /** Дефицит на кг жира (ккал/кг/день → ккал/кг жира или iCharge/кг жира). */
+  formatDeficitPerKgFat: (kcalPerKgFat: number) => string;
+  /** Числовая часть дефицита на кг жира (без единицы). */
+  formatDeficitPerKgFatValue: (kcalPerKgFat: number) => string;
+  /** Единица дефицита на кг жира для подписей полей. */
+  deficitPerKgFatUnit: string;
 };
 
 function resolveSystem(raw: string | undefined): UnitsSystem {
@@ -71,10 +82,10 @@ function metricNum(n: number, digits = 1): string {
 }
 
 function buildMetricFormatters(): UnitsFormatters {
-  const bodyWeight = (kg: number) => `${metricNum(kg, 1)} кг`;
+  const bodyWeight = (kg: number) => `${metricNum(kg, 2)} кг`;
   const barbellWeight = (kg: number) => `${metricNum(kg, 1)} кг`;
   const height = (cm: number) => `${metricNum(cm, 1)} см`;
-  const circumference = (cm: number) => `${metricNum(cm, 1)} см`;
+  const circumference = (cm: number) => `${metricNum(cm, 2)} см`;
   return {
     system: "metric",
     formatWeight: bodyWeight,
@@ -84,6 +95,10 @@ function buildMetricFormatters(): UnitsFormatters {
     parseBarbellWeightInput: (value) => value,
     formatHeight: height,
     formatCircumference: circumference,
+    formatCircumferenceChange: (cmChange) => {
+      const sign = cmChange > 0 ? "+" : "";
+      return `${sign}${metricNum(cmChange, 2)} см`;
+    },
     formatLoad: (kg) => `${metricNum(kg, 0)} кг`,
     formatLength: (cm) => `${metricNum(cm, 1)} см`,
     formatSmallLength: (cm) => `${metricNum(cm, 1)} см`,
@@ -112,9 +127,13 @@ function buildMetricFormatters(): UnitsFormatters {
     },
     formatSpeed: (kmh) => `${metricNum(kmh, 1)} км/ч`,
     formatSwimSpeed: (kmh) => `${metricNum(kmh, 1)} км/ч`,
-    formatPace: (minPerKm) => `${metricNum(minPerKm, 1)} мин/км`,
+    formatPace: (minPerKm) => formatPaceMinPerKm(minPerKm),
     formatPower: (watts) => `${metricNum(watts, 0)} Вт`,
     formatDistance: (km) => `${metricNum(km, 2)} км`,
+    formatDeficitPerKgFat: (kcalPerKgFat) =>
+      `${metricNum(kcalPerKgFat, 1)} ккал/кг жира`,
+    formatDeficitPerKgFatValue: (kcalPerKgFat) => metricNum(kcalPerKgFat, 1),
+    deficitPerKgFatUnit: "ккал/кг жира",
   };
 }
 
@@ -132,7 +151,10 @@ function buildAmericanFormatters(): UnitsFormatters {
   const formatBarbellWeightForInput = (kg: number) => {
     const { value, unit } = kgToAmericanWeight(kg);
     const kind = unit === "Jp" ? "japanese" : "camry";
-    return { value: Number(formatAmericanNumber(value, kind)), unit };
+    return {
+      value: Number(formatAmericanNumber(value, kind, AMERICAN_INPUT_NUMBER_OPTS)),
+      unit,
+    };
   };
   const parseBarbellWeightInput = (value: number, unit: string) => {
     if (unit === "кг" || unit === "kg") return value;
@@ -143,7 +165,12 @@ function buildAmericanFormatters(): UnitsFormatters {
   };
   const formatHeight = (cm: number) =>
     `${formatAmericanNumber(cmToTrump(cm), "default")} Tp`;
-  const formatCircumference = (cm: number) => `${metricNum(cm, 1)} см`;
+  const formatCircumference = (cm: number) =>
+    `${formatAmericanNumber(cmToDick(cm), "default")} Dk`;
+  const formatCircumferenceChange = (cmChange: number) => {
+    const sign = cmChange > 0 ? "+" : "";
+    return `${sign}${formatAmericanNumber(cmToDick(cmChange), "default")} Dk`;
+  };
   return {
     system: "american",
     formatWeight: formatBodyWeightDisplay,
@@ -153,6 +180,7 @@ function buildAmericanFormatters(): UnitsFormatters {
     parseBarbellWeightInput,
     formatHeight,
     formatCircumference,
+    formatCircumferenceChange,
     formatLoad: (kg) =>
       `${formatAmericanNumber(kgToJapanese(kg), "japanese")} Jp`,
     formatLength: (cm) => {
@@ -165,7 +193,8 @@ function buildAmericanFormatters(): UnitsFormatters {
     formatEnergy: (kcal) => `${kcalToIcharge(kcal).toFixed(1)} iCharge`,
     formatTemperature: (c) =>
       `${formatAmericanNumber(celsiusToRankinJunior(c), "default")} °Rj`,
-    formatElevation: (m) => `${metersToRushmores(m).toFixed(3)} рашморов`,
+    formatElevation: (m) =>
+      `${formatAmericanNumber(metersToRushmores(m), "default")} рашморов`,
     formatDuration: (seconds) => {
       const s = Math.max(0, seconds);
       if (s > SECONDS_PER_FEP) {
@@ -178,14 +207,17 @@ function buildAmericanFormatters(): UnitsFormatters {
       const sign = kgChange > 0 ? "+" : "";
       return `${sign}${formatAmericanNumber(kgToJapanese(kgChange), "japanese")} Jp`;
     },
-    formatSpeed: (kmh) => `${formatAmericanNumber(kmhToSolPerHour(kmh), "default")} SoL/h`,
-    formatSwimSpeed: (kmh) => `${formatAmericanNumber(kmhToSolPerHour(kmh), "default")} SoL/h`,
-    formatPace: (minPerKm) =>
-      `${formatAmericanNumber(paceMinPerKmToMinPerSol(minPerKm), "default")} мин/SoL`,
+    formatSpeed: formatSpeedKmhAmerican,
+    formatSwimSpeed: formatSpeedKmhAmerican,
+    formatPace: formatPaceMinPerKmAmerican,
     formatPower: (watts) =>
       `${wattsToIchargePerMin(watts).toFixed(3)} iCharge/мин`,
     formatDistance: formatDistanceKm,
     formatSmallLength: (cm) => `${formatAmericanNumber(cmToDick(cm), "default")} Dk`,
+    formatDeficitPerKgFat: (kcalPerKgFat) =>
+      `${kcalToIcharge(kcalPerKgFat).toFixed(1)} iCharge/кг жира`,
+    formatDeficitPerKgFatValue: (kcalPerKgFat) => kcalToIcharge(kcalPerKgFat).toFixed(1),
+    deficitPerKgFatUnit: "iCharge/кг жира",
   };
 }
 

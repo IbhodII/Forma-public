@@ -5,6 +5,9 @@ import type { PlotData, PlotMouseEvent } from "plotly.js";
 import { PlotChart } from "./Plot";
 import type { WorkoutSensors } from "../api/cardio";
 import { useUnits } from "../hooks/useUnits";
+import { paceMinPerKmToMinPerSol } from "../utils/americanUnits";
+import { CARDIO_RUN } from "../utils/constants";
+import { speedKmhToPaceMinPerKm } from "../utils/format";
 import { timeChartXAxis, timeHoverLabels } from "../utils/bikeChartLayout";
 import { downsampleElevationByDistance } from "../utils/bikeTrack";
 import type { TrackPoint } from "../utils/bikeTrack";
@@ -19,6 +22,8 @@ import {
   convertKmSeries,
   DISTANCE_AXIS_AMERICAN,
   DISTANCE_AXIS_METRIC,
+  PACE_AXIS_AMERICAN,
+  PACE_AXIS_METRIC,
   SPEED_AXIS_AMERICAN,
   SPEED_AXIS_METRIC,
   type ChartUnitsSystem,
@@ -110,12 +115,15 @@ export function BikeWorkoutCharts({
   sensors,
   axis,
   onFocusPoint,
+  workoutType,
 }: {
   sensors: WorkoutSensors;
   axis: HrChartAxis;
   onFocusPoint?: (point: TrackPoint | null) => void;
+  workoutType?: string | null;
 }) {
-  const { system } = useUnits();
+  const { system, formatPace } = useUnits();
+  const isRun = workoutType === CARDIO_RUN;
   const useAmerican = system === "american";
   const elevationUnit = useAmerican ? ELEVATION_AXIS_AMERICAN : ELEVATION_AXIS_METRIC;
   const temperatureUnit = useAmerican ? "°Rj" : "°C";
@@ -267,28 +275,65 @@ export function BikeWorkoutCharts({
   }
 
   if (sensors.has_speed) {
-    const yRaw = sensors.speed_kmh.map((v) => (v != null && v > 0 ? v : null));
-    const y = useAmerican ? convertArrayKmhToSol(yRaw) : yRaw;
-    charts.push({
-      key: "speed",
-      node: (
-        <PlotChart
-          compact
-          data={[
-            lineTrace(x, y, elapsed, {
-              name: "Скорость",
-              color: "#8b5cf6",
-              yUnit: speedUnit,
-              connectgaps: true,
-              byDistance,
-              xDistanceUnit,
-            }),
-          ]}
-          layout={seriesLayout(`Скорость, ${speedUnit} (${axisSuffix})`, speedUnit, xLayout)}
-          onClick={makeClickHandler(elapsed)}
-        />
-      ),
-    });
+    const speedRaw = sensors.speed_kmh.map((v) => (v != null && v > 0 ? v : null));
+    if (isRun) {
+      const paceRaw = speedRaw.map((v) => (v != null ? speedKmhToPaceMinPerKm(v) : null));
+      const y = useAmerican
+        ? paceRaw.map((v) =>
+            v != null ? Math.round(paceMinPerKmToMinPerSol(v) * 100) / 100 : null,
+          )
+        : paceRaw;
+      const paceUnit = useAmerican ? PACE_AXIS_AMERICAN : PACE_AXIS_METRIC;
+      const hoverPace = paceRaw.map((v) => (v != null ? formatPace(v) : ""));
+      charts.push({
+        key: "pace",
+        node: (
+          <PlotChart
+            compact
+            data={[
+              {
+                ...lineTrace(x, y, elapsed, {
+                  name: "Темп",
+                  color: "#8b5cf6",
+                  yUnit: paceUnit,
+                  connectgaps: true,
+                  byDistance,
+                  xDistanceUnit,
+                }),
+                text: hoverPace,
+                hovertemplate: byDistance
+                  ? `%{text}<br>Дистанция: %{x:.2f} ${xDistanceUnit}<br>Время: %{customdata}<extra></extra>`
+                  : `%{text}<br>Время: %{customdata}<extra></extra>`,
+              } as PlotData,
+            ]}
+            layout={seriesLayout(`Темп, ${paceUnit} (${axisSuffix})`, paceUnit, xLayout)}
+            onClick={makeClickHandler(elapsed)}
+          />
+        ),
+      });
+    } else {
+      const y = useAmerican ? convertArrayKmhToSol(speedRaw) : speedRaw;
+      charts.push({
+        key: "speed",
+        node: (
+          <PlotChart
+            compact
+            data={[
+              lineTrace(x, y, elapsed, {
+                name: "Скорость",
+                color: "#8b5cf6",
+                yUnit: speedUnit,
+                connectgaps: true,
+                byDistance,
+                xDistanceUnit,
+              }),
+            ]}
+            layout={seriesLayout(`Скорость, ${speedUnit} (${axisSuffix})`, speedUnit, xLayout)}
+            onClick={makeClickHandler(elapsed)}
+          />
+        ),
+      });
+    }
   }
 
   return (

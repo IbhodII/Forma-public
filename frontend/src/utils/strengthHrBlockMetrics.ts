@@ -1,5 +1,5 @@
-import type { HeartRatePoint } from "../types";
-import type { StrengthHrEditableBlock } from "../types/strengthHrEditor";
+import type { HeartRatePoint, StrengthHrDetectedBlock } from "../types";
+import type { BlockKind, StrengthHrEditableBlock } from "../types/strengthHrEditor";
 
 export const MIN_BLOCK_DURATION_SEC = 10;
 export const MIN_RECOVERY_DROP_BPM = 10;
@@ -198,6 +198,76 @@ export function clampBoundarySec(
   const minEnd = block.start_sec + MIN_BLOCK_DURATION_SEC;
   const maxEnd = neighbors.nextStart ?? block.end_sec + 3600;
   return Math.max(minEnd, Math.min(Math.round(sec), maxEnd));
+}
+
+export function isValidBlockInterval(
+  block: Pick<StrengthHrEditableBlock, "start_sec" | "end_sec">,
+): boolean {
+  return (
+    Number.isFinite(block.start_sec) &&
+    Number.isFinite(block.end_sec) &&
+    block.end_sec > block.start_sec
+  );
+}
+
+export function normalizeDetectedBlockForEditor(
+  block: StrengthHrDetectedBlock,
+  autoBlock?: StrengthHrDetectedBlock,
+): StrengthHrEditableBlock | null {
+  if (!isValidBlockInterval(block)) return null;
+  const kindRaw = (block as StrengthHrDetectedBlock & { kind?: BlockKind }).kind;
+  const kind: BlockKind = kindRaw === "rest" || kindRaw === "noise" ? kindRaw : "set";
+  const auto = autoBlock ?? block;
+  const index =
+    typeof block.block_index === "number" && block.block_index > 0
+      ? block.block_index
+      : typeof block.block_id === "number" && block.block_id > 0
+        ? block.block_id
+        : 1;
+  const blockId =
+    typeof block.block_id === "number" && block.block_id > 0 ? block.block_id : index;
+  return {
+    ...block,
+    block_index: index,
+    block_id: blockId,
+    kind,
+    assigned_order_index: block.matched_order_index ?? null,
+    isManual: false,
+    source_auto_block_index: auto.block_index > 0 ? auto.block_index : index,
+    original_auto_start_sec: auto.start_sec,
+    original_auto_end_sec: auto.end_sec,
+    confidence: block.confidence || "low",
+  };
+}
+
+export function prepareEditableBlocks(
+  initialBlocks: StrengthHrDetectedBlock[],
+  autoBlocks: StrengthHrDetectedBlock[],
+  points: HeartRatePoint[],
+): { blocks: StrengthHrEditableBlock[]; skipped: number } {
+  const autoByIndex = new Map<number, StrengthHrDetectedBlock>();
+  for (const b of autoBlocks) {
+    if (typeof b.block_index === "number" && b.block_index > 0) {
+      autoByIndex.set(b.block_index, b);
+    }
+  }
+  const editable: StrengthHrEditableBlock[] = [];
+  let skipped = 0;
+  for (const block of initialBlocks) {
+    const autoMatch =
+      autoByIndex.get(block.block_index) ??
+      autoBlocks.find((a) => a.start_sec === block.start_sec && a.end_sec === block.end_sec);
+    const row = normalizeDetectedBlockForEditor(block, autoMatch);
+    if (!row) {
+      skipped += 1;
+      continue;
+    }
+    editable.push(row);
+  }
+  return {
+    blocks: recalcAllBlockMetrics(points, reindexBlocks(editable)),
+    skipped,
+  };
 }
 
 export function findDuplicateSetAssignments(

@@ -633,7 +633,7 @@ def get_workout_form_prefill(
     preset_id задан — из workout_presets; иначе только активный exercise_set (не история).
     """
     from backend.services import preset_service
-    from backend.services.preset_sets_utils import is_plank_exercise
+    from backend.services.preset_sets_utils import is_time_based_exercise
 
     eff_date = str(on_date)[:10]
     names: list[str] = []
@@ -677,7 +677,7 @@ def get_workout_form_prefill(
             default_reps = ""
             default_weight = None
             preset_sets = []
-            is_bodyweight = is_plank_exercise(name)
+            is_bodyweight = is_time_based_exercise(name)
             weight = float(lw) if lw is not None else None
             reps = lr if lr else ""
 
@@ -766,7 +766,7 @@ def get_workout_form_prefill(
                     default_reps = ""
                     default_weight = None
                     preset_sets = []
-                    is_bodyweight = is_plank_exercise(name)
+                    is_bodyweight = is_time_based_exercise(name)
                     weight = float(lw) if lw is not None else None
                     reps = lr if lr else ""
                 exercises.append(

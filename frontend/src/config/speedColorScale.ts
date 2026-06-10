@@ -1,26 +1,35 @@
 /**
- * Абсолютная шкала цветов скорости для велотреков.
- * Одинаковая скорость → одинаковый цвет на всех тренировках.
+ * Абсолютная шкала цветов скорости для GPS-треков.
+ * Одинаковая скорость → одинаковый цвет на всех тренировках одного типа.
  *
- * Профили (road / mtb / indoor / commuting) — заготовка под разные шкалы;
- * пока все используют `global`.
+ * Велосипед: км/ч (0–45).
+ * Бег: км/ч внутри, подписи legend — темп (мин/км).
  */
 
-export type CyclingWorkoutProfile = "global" | "road" | "mtb" | "indoor" | "commuting";
+import { CARDIO_RUN } from "../utils/constants";
+import { speedKmhToPaceMinPerKm } from "../utils/format";
+
+export type SpeedColorProfile = "global" | "road" | "mtb" | "indoor" | "commuting" | "running";
+
+/** @deprecated use SpeedColorProfile */
+export type CyclingWorkoutProfile = SpeedColorProfile;
 
 export interface SpeedColorStop {
   /** Нижняя граница диапазона, км/ч */
   speedKmh: number;
   rgb: [number, number, number];
-  /** Подпись в legend */
+  /** Подпись в legend (км/ч или темп) */
   label?: string;
 }
 
 /** Шаг квантизации скорости перед расчётом цвета — стабильный merge сегментов */
 export const SPEED_COLOR_QUANT_KMH = 0.5;
 
-/** Верхняя граница шкалы для CSS-gradient legend (км/ч) */
+/** Верхняя граница шкалы велосипеда для CSS-gradient legend (км/ч) */
 export const SPEED_SCALE_MAX_KMH = 45;
+
+/** Верхняя граница шкалы бега для CSS-gradient legend (км/ч ≈ 3:20 /км) */
+export const RUNNING_SCALE_MAX_KMH = 18;
 
 const GLOBAL_STOPS: SpeedColorStop[] = [
   { speedKmh: 0, rgb: [30, 58, 138], label: "0" },
@@ -31,19 +40,28 @@ const GLOBAL_STOPS: SpeedColorStop[] = [
   { speedKmh: 40, rgb: [220, 38, 38], label: "40+" },
 ];
 
-/**
- * Шкалы по типу тренировки.
- * Сейчас все профили → global; позже можно задать отдельные stops.
- */
-export const SPEED_COLOR_PROFILES: Record<CyclingWorkoutProfile, SpeedColorStop[]> = {
+/** Бег: цвет по км/ч, подписи — темп мин/км (медленнее → быстрее слева направо). */
+const RUNNING_STOPS: SpeedColorStop[] = [
+  { speedKmh: 0, rgb: [30, 58, 138], label: "10:00+" },
+  { speedKmh: 6, rgb: [6, 182, 212], label: "10:00" },
+  { speedKmh: 8, rgb: [34, 197, 94], label: "7:30" },
+  { speedKmh: 10, rgb: [234, 179, 8], label: "6:00" },
+  { speedKmh: 12, rgb: [249, 115, 22], label: "5:00" },
+  { speedKmh: 14, rgb: [220, 38, 38], label: "4:15" },
+  { speedKmh: 16, rgb: [185, 28, 28], label: "3:45" },
+  { speedKmh: 18, rgb: [127, 29, 29], label: "3:20" },
+];
+
+export const SPEED_COLOR_PROFILES: Record<SpeedColorProfile, SpeedColorStop[]> = {
   global: GLOBAL_STOPS,
   road: GLOBAL_STOPS,
   mtb: GLOBAL_STOPS,
   indoor: GLOBAL_STOPS,
   commuting: GLOBAL_STOPS,
+  running: RUNNING_STOPS,
 };
 
-/** Диапазоны для подписей legend (км/ч) */
+/** Диапазоны для подписей legend велосипеда (км/ч) */
 export const SPEED_RANGE_LABELS: { from: number; to: number | null; label: string }[] = [
   { from: 0, to: 10, label: "0–10" },
   { from: 10, to: 18, label: "10–18" },
@@ -66,15 +84,20 @@ function lerpRgb(a: [number, number, number], b: [number, number, number], t: nu
   ];
 }
 
-export function getSpeedColorStops(profile: CyclingWorkoutProfile = "global"): SpeedColorStop[] {
+export function isRunningSpeedProfile(profile: SpeedColorProfile): boolean {
+  return profile === "running";
+}
+
+export function getScaleMaxKmh(profile: SpeedColorProfile = "global"): number {
+  return profile === "running" ? RUNNING_SCALE_MAX_KMH : SPEED_SCALE_MAX_KMH;
+}
+
+export function getSpeedColorStops(profile: SpeedColorProfile = "global"): SpeedColorStop[] {
   return SPEED_COLOR_PROFILES[profile] ?? SPEED_COLOR_PROFILES.global;
 }
 
-/**
- * Будущее: маппинг типа кардио / FIT → профиль шкалы.
- * Пока всегда global.
- */
-export function resolveSpeedColorProfile(_workoutType?: string | null): CyclingWorkoutProfile {
+export function resolveSpeedColorProfile(workoutType?: string | null): SpeedColorProfile {
+  if (workoutType === CARDIO_RUN) return "running";
   return "global";
 }
 
@@ -84,7 +107,7 @@ function quantizeSpeed(speedKmh: number): number {
 }
 
 /** Плавная интерполяция RGB между фиксированными stops по абсолютной скорости. */
-export function speedToColor(speedKmh: number, profile: CyclingWorkoutProfile = "global"): string {
+export function speedToColor(speedKmh: number, profile: SpeedColorProfile = "global"): string {
   const stops = getSpeedColorStops(profile);
   if (stops.length === 0) return "#059669";
 
@@ -105,9 +128,9 @@ export function speedToColor(speedKmh: number, profile: CyclingWorkoutProfile = 
 }
 
 /** CSS linear-gradient для legend-бара (абсолютная шкала). */
-export function speedScaleGradientCss(profile: CyclingWorkoutProfile = "global"): string {
+export function speedScaleGradientCss(profile: SpeedColorProfile = "global"): string {
   const stops = getSpeedColorStops(profile);
-  const max = SPEED_SCALE_MAX_KMH;
+  const max = getScaleMaxKmh(profile);
   const parts = stops.map((s) => {
     const pct = Math.min(100, (s.speedKmh / max) * 100);
     return `${speedToColor(s.speedKmh, profile)} ${pct}%`;
@@ -123,9 +146,9 @@ export interface SpeedLegendTick {
   positionPct: number;
 }
 
-export function getSpeedLegendTicks(profile: CyclingWorkoutProfile = "global"): SpeedLegendTick[] {
+export function getSpeedLegendTicks(profile: SpeedColorProfile = "global"): SpeedLegendTick[] {
   const stops = getSpeedColorStops(profile);
-  const max = SPEED_SCALE_MAX_KMH;
+  const max = getScaleMaxKmh(profile);
   return stops.map((s) => ({
     speedKmh: s.speedKmh,
     label: s.label ?? String(s.speedKmh),
@@ -138,8 +161,18 @@ export function getSpeedLegendTicks(profile: CyclingWorkoutProfile = "global"): 
 export function speedRangeMidColor(
   from: number,
   to: number | null,
-  profile: CyclingWorkoutProfile = "global",
+  profile: SpeedColorProfile = "global",
 ): string {
   const mid = to != null ? (from + to) / 2 : from + 5;
   return speedToColor(mid, profile);
+}
+
+/** Темп мин/км для подписи legend бега (без единиц). */
+export function paceMinPerKmLabel(speedKmh: number): string {
+  const pace = speedKmhToPaceMinPerKm(speedKmh);
+  if (pace == null) return "—";
+  const m = Math.floor(pace);
+  const s = Math.round((pace - m) * 60);
+  const sec = s >= 60 ? 59 : s;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }

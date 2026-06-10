@@ -2,6 +2,7 @@
 """Сборка GeoJSON трека велотренировки с метаданными точек."""
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -12,7 +13,7 @@ def _arr(values: list[Any]) -> list[Any]:
 def build_enriched_geojson(track_points: list[dict[str, Any]]) -> dict[str, Any] | None:
     """
     track_points: упорядоченные dict с ключами lon, lat, elapsed_sec и опционально
-    speed_kmh, cadence, elevation_m, temperature_c, heart_rate, distance_m.
+    speed_kmh, cadence, elevation_m, temperature_c, heart_rate, distance_m, power_watts.
     """
     if len(track_points) < 2:
         return None
@@ -24,6 +25,7 @@ def build_enriched_geojson(track_points: list[dict[str, Any]]) -> dict[str, Any]
     temperature: list[float | None] = []
     heart_rate: list[int | None] = []
     distance_m: list[float | None] = []
+    power_watts: list[float | None] = []
 
     for p in track_points:
         lon, lat = p.get("lon"), p.get("lat")
@@ -41,6 +43,7 @@ def build_enriched_geojson(track_points: list[dict[str, Any]]) -> dict[str, Any]
             int(p["heart_rate"]) if p.get("heart_rate") is not None else None
         )
         distance_m.append(_float_or_none(p.get("distance_m")))
+        power_watts.append(_float_or_none(p.get("power_watts")))
 
     if len(coords) < 2:
         return None
@@ -59,6 +62,7 @@ def build_enriched_geojson(track_points: list[dict[str, Any]]) -> dict[str, Any]
                     "temperature_c": _arr(temperature),
                     "heart_rate": _arr(heart_rate),
                     "distance_m": _arr(distance_m),
+                    "power_watts": _arr(power_watts),
                 },
             }
         ],
@@ -113,6 +117,7 @@ def geojson_to_track_points(geo: dict[str, Any]) -> list[dict[str, Any]]:
                 "temperature_c": _prop_at(props, "temperature_c", i),
                 "heart_rate": _prop_int(props, "heart_rate", i),
                 "distance_m": _prop_at(props, "distance_m", i),
+                "power_watts": _prop_at(props, "power_watts", i),
             }
         )
     return out
@@ -151,72 +156,130 @@ def linestring_to_track_points(geo: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _list_has_values(arr: Any) -> bool:
+    if not isinstance(arr, list):
+        return False
+    return any(v is not None for v in arr)
+
+
+def geojson_has_point_telemetry(props: dict[str, Any]) -> bool:
+    """True when properties arrays include usable speed or heart rate."""
+    if not isinstance(props.get("elapsed_sec"), list) or not props["elapsed_sec"]:
+        return False
+    return _list_has_values(props.get("speed_kmh")) or _list_has_values(props.get("heart_rate"))
+
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    earth_r = 6_371_000.0
+    to_rad = math.radians
+    d_lat = to_rad(lat2 - lat1)
+    d_lon = to_rad(lon2 - lon1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(to_rad(lat1)) * math.cos(to_rad(lat2)) * math.sin(d_lon / 2) ** 2
+    )
+    return 2 * earth_r * math.asin(math.sqrt(a))
+
+
+def _segment_speed_kmh(a: dict[str, Any], b: dict[str, Any]) -> float:
+    from_data = _float_or_none(a.get("speed_kmh")) or _float_or_none(b.get("speed_kmh"))
+    if from_data is not None and from_data > 0:
+        return from_data
+    dt = float(b["elapsed_sec"]) - float(a["elapsed_sec"])
+    if dt <= 0:
+        return 0.0
+    dist_m = _haversine_m(float(a["lat"]), float(a["lon"]), float(b["lat"]), float(b["lon"]))
+    if dist_m <= 0:
+        return 0.0
+    return (dist_m / dt) * 3.6
+
+
+def _nearest_row_by_sec(
+    rows: list[dict[str, Any]],
+    sec: int,
+    *,
+    sec_key: str,
+    max_delta_sec: int = 2,
+) -> dict[str, Any]:
+    if not rows:
+        return {}
+    exact = next((r for r in rows if int(r[sec_key]) == sec), None)
+    if exact:
+        return exact
+    best = min(rows, key=lambda r: abs(int(r[sec_key]) - sec))
+    if abs(int(best[sec_key]) - sec) <= max_delta_sec:
+        return best
+    return {}
+
+
+def derive_point_speeds(points: list[dict[str, Any]]) -> None:
+    """Fill missing speed_kmh from GPS segments (in-place)."""
+    for i, point in enumerate(points):
+        if _float_or_none(point.get("speed_kmh")):
+            continue
+        for neighbor in (i + 1, i - 1):
+            if neighbor < 0 or neighbor >= len(points):
+                continue
+            a = points[min(i, neighbor)]
+            b = points[max(i, neighbor)]
+            spd = _segment_speed_kmh(a, b)
+            if spd > 0:
+                point["speed_kmh"] = spd
+                break
+
+
+def merge_telemetry_into_track_points(
+    points: list[dict[str, Any]],
+    sensor_rows: list[dict[str, Any]],
+    hr_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Normalize track points with sensors, HR, and derived GPS speed."""
+    if not points:
+        return points
+    merged: list[dict[str, Any]] = []
+    for point in points:
+        sec = int(round(float(point.get("elapsed_sec") or 0)))
+        sensor = _nearest_row_by_sec(sensor_rows, sec, sec_key="elapsed_sec", max_delta_sec=2)
+        hr = _nearest_row_by_sec(hr_rows, sec, sec_key="seconds", max_delta_sec=30)
+        row = dict(point)
+        if row.get("speed_kmh") is None and sensor.get("speed_kmh") is not None:
+            row["speed_kmh"] = _float_or_none(sensor.get("speed_kmh"))
+        if row.get("cadence") is None and sensor.get("cadence") is not None:
+            row["cadence"] = _float_or_none(sensor.get("cadence"))
+        if row.get("elevation_m") is None and sensor.get("elevation_m") is not None:
+            row["elevation_m"] = _float_or_none(sensor.get("elevation_m"))
+        if row.get("temperature_c") is None and sensor.get("temperature_c") is not None:
+            row["temperature_c"] = _float_or_none(sensor.get("temperature_c"))
+        if row.get("power_watts") is None and sensor.get("power_watts") is not None:
+            row["power_watts"] = _float_or_none(sensor.get("power_watts"))
+        if row.get("heart_rate") is None and hr.get("heart_rate") is not None:
+            row["heart_rate"] = int(hr["heart_rate"])
+        if row.get("distance_m") is None and hr.get("distance_m") is not None:
+            row["distance_m"] = _float_or_none(hr.get("distance_m"))
+        merged.append(row)
+    derive_point_speeds(merged)
+    return merged
+
+
 def enrich_geojson_from_sensors(
     geo: dict[str, Any],
     sensor_rows: list[dict[str, Any]],
     hr_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Дополнить legacy LineString свойствами из workout_sensors и пульса."""
-    feature = None
+    """Дополнить GeoJSON телеметрией из workout_sensors и workout_heart_rate."""
+    points = geojson_to_track_points(geo)
+    if len(points) < 2:
+        return geo
+    merged = merge_telemetry_into_track_points(points, sensor_rows, hr_rows)
+    enriched = build_enriched_geojson(merged)
+    if not enriched:
+        return geo
+    props = {}
     if geo.get("type") == "FeatureCollection" and geo.get("features"):
-        feature = geo["features"][0]
-    elif geo.get("type") == "LineString":
-        feature = {
-            "type": "Feature",
-            "geometry": geo,
-            "properties": {},
-        }
-        geo = {"type": "FeatureCollection", "features": [feature]}
-    if not feature:
-        return geo
-
-    props = feature.get("properties") or {}
-    if props.get("elapsed_sec") and props.get("speed_kmh"):
-        return geo
-
-    coords = (feature.get("geometry") or {}).get("coordinates") or []
-    if len(coords) < 2:
-        return geo
-
-    sensor_by_sec = {int(r["elapsed_sec"]): r for r in sensor_rows if r.get("elapsed_sec") is not None}
-    hr_by_sec = {int(r["seconds"]): r for r in hr_rows if r.get("seconds") is not None}
-
-    n = len(coords)
-    if sensor_rows:
-        max_sec = max(sensor_by_sec.keys(), default=n - 1)
-        step = max_sec / max(n - 1, 1)
-    else:
-        step = 1.0
-
-    elapsed: list[int] = []
-    speed: list[float | None] = []
-    cadence: list[float | None] = []
-    elevation: list[float | None] = []
-    temperature: list[float | None] = []
-    heart_rate: list[int | None] = []
-    distance_m: list[float | None] = []
-
-    for i in range(n):
-        sec = int(round(i * step)) if sensor_rows else i
-        elapsed.append(sec)
-        s = sensor_by_sec.get(sec, {})
-        h = hr_by_sec.get(sec, {})
-        speed.append(_float_or_none(s.get("speed_kmh")))
-        cadence.append(_float_or_none(s.get("cadence")))
-        elevation.append(_float_or_none(s.get("elevation_m")))
-        temperature.append(_float_or_none(s.get("temperature_c")))
-        heart_rate.append(
-            int(h["heart_rate"]) if h.get("heart_rate") is not None else None
-        )
-        distance_m.append(_float_or_none(h.get("distance_m")))
-
-    feature["properties"] = {
-        "elapsed_sec": elapsed,
-        "speed_kmh": speed,
-        "cadence": cadence,
-        "elevation_m": elevation,
-        "temperature_c": temperature,
-        "heart_rate": heart_rate,
-        "distance_m": distance_m,
-    }
-    return geo
+        props = (geo["features"][0] or {}).get("properties") or {}
+    elif geo.get("type") == "Feature":
+        props = geo.get("properties") or {}
+    start_time = props.get("start_time")
+    if start_time:
+        enriched["features"][0]["properties"]["start_time"] = start_time
+    return enriched

@@ -280,7 +280,11 @@ export function NutritionForecastPanel({
             </p>
           )}
           {(forecast.weight_projection?.length ?? 0) >= 1 ? (
-            <WeightProjectionChart forecast={forecast} className="card-panel" />
+            <WeightProjectionChart
+              forecast={forecast}
+              plan={planQuery.data}
+              className="card-panel"
+            />
           ) : null}
           <div className="card-panel space-y-3">
             <h4 className="section-title">Прогноз до цели</h4>

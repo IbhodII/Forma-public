@@ -35,8 +35,10 @@ import {
 import { HEALTH_METRIC } from "../../../shared/healthMetricColors";
 import { BodyOverviewMiniTrend } from "./overview/BodyOverviewMiniTrend";
 import { BodyOverviewWeightChart } from "./overview/BodyOverviewWeightChart";
+import { useUnits } from "../../../hooks/useUnits";
 
 export function BodyOverviewTab() {
+  const { formatBodyWeight, formatEnergy, formatWeightChange } = useUnits();
   const overviewQuery = useBodyOverviewSummary();
   const qc = useQueryClient();
   const weekStartDay = useWeekStartDay();
@@ -97,10 +99,10 @@ export function BodyOverviewTab() {
           iconBg={HEALTH_METRIC.weight.rgb + " / 0.15"}
           iconColor={HEALTH_METRIC.weight.dark}
           label="Вес"
-          value={w.current != null ? `${w.current.toFixed(1)} кг` : null}
+          value={w.current != null ? formatBodyWeight(w.current) : null}
           delta={
             w.delta != null
-              ? `${w.delta > 0 ? "+" : ""}${w.delta.toFixed(1)} кг к прошлой записи`
+              ? `${formatWeightChange(w.delta)} к прошлой записи`
               : undefined
           }
           deltaTone={
@@ -183,11 +185,9 @@ export function BodyOverviewTab() {
           iconColor={HEALTH_METRIC.calories.dark}
           label="Калории"
           value={
-            hub.calories.today_total != null
-              ? `${hub.calories.today_total.toLocaleString("ru-RU")} ккал`
-              : null
+            hub.calories.today_total != null ? formatEnergy(hub.calories.today_total) : null
           }
-          meta={avgCal != null ? `среднее ${avgCal.toLocaleString("ru-RU")} / день` : undefined}
+          meta={avgCal != null ? `среднее ${formatEnergy(Math.round(avgCal))} / день` : undefined}
           sparkValues={calSpark}
           sparkColor={HEALTH_METRIC.calories.primary}
           to={`/body?tab=${BODY_TAB_ACTIVITY}`}
@@ -285,8 +285,8 @@ export function BodyOverviewTab() {
           {calSpark.length >= 2 ? (
             <BodyOverviewMiniTrend
               eyebrow="7 дней"
-              value={avgCal != null ? avgCal.toLocaleString("ru-RU") : null}
-              valueSuffix={avgCal != null ? "ккал/день" : undefined}
+              value={avgCal != null ? formatEnergy(Math.round(avgCal)) : null}
+              valueSuffix={avgCal != null ? "/день" : undefined}
               series={calSpark}
               color={HEALTH_METRIC.calories.primary}
             />

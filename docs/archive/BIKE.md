@@ -2,6 +2,8 @@
 
 Полный цикл данных велотренировок: импорт FIT → SQLite → API → React (карта Leaflet + графики Plotly).
 
+> **Planned UX gap (2026-06):** segment hover may show rich tooltips, but **route point selection** during playback/inspection should expose the full per-point telemetry set (speed, pace, HR, cadence, elevation, power, …). Tracked as P2 in [ROADMAP.md](../ROADMAP.md) — Route Point Telemetry & Map Inspection.
+
 ---
 
 ## Источники данных

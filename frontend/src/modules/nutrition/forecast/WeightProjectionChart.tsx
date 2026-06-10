@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useTheme } from "../../../contexts/ThemeContext";
 import {
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -9,11 +10,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { NutritionForecastResult } from "../../../api/cutBulk";
+import type { NutritionForecastResult, NutritionPlan } from "../../../api/cutBulk";
 import { useUnits } from "../../../hooks/useUnits";
 import { formatDateRu } from "../../../utils/format";
 import { cn } from "../../../lib/utils";
-import { buildForecastChartData } from "./forecastChartData";
+import {
+  buildForecastChartData,
+  chartHasPlannedTrajectory,
+} from "./forecastChartData";
+
+const ACTUAL_LINE_COLOR = "#22C55E";
+const PLANNED_LINE_COLOR = "#6366F1";
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -22,22 +29,26 @@ function fmtDate(iso: string | null | undefined) {
 
 export function WeightProjectionChart({
   forecast,
+  plan,
   className,
   tall = false,
   showCaption = true,
 }: {
   forecast: NutritionForecastResult;
+  plan?: NutritionPlan | null;
   className?: string;
   tall?: boolean;
   showCaption?: boolean;
 }) {
-  const { formatBodyWeight, formatEnergy } = useUnits();
+  const { formatBodyWeight, formatEnergy, formatDeficitPerKgFat, formatDeficitPerKgFatValue } =
+    useUnits();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const tickColor = isDark ? "#94a3b8" : "#64748b";
   const gridColor = isDark ? "#475569" : "#94a3b8";
 
-  const chartData = useMemo(() => buildForecastChartData(forecast), [forecast]);
+  const chartData = useMemo(() => buildForecastChartData(forecast, plan), [forecast, plan]);
+  const showPlannedLine = chartHasPlannedTrajectory(chartData);
 
   const realRatePerKg =
     forecast.average_real_deficit_per_kg_fat ?? forecast.observed_deficit_per_kg_fat;
@@ -45,7 +56,9 @@ export function WeightProjectionChart({
 
   const weightYDomain = useMemo((): [number, number] | undefined => {
     if (chartData.length < 2) return undefined;
-    const weights = chartData.map((d) => d.weight).filter((w) => Number.isFinite(w));
+    const weights = chartData
+      .flatMap((d) => [d.weight, d.plannedWeight])
+      .filter((w): w is number => w != null && Number.isFinite(w));
     if (weights.length < 2) return undefined;
     const min = Math.min(...weights);
     const max = Math.max(...weights);
@@ -73,8 +86,8 @@ export function WeightProjectionChart({
       {showCaption && forecast.model === "dynamic_cut" ? (
         <p className="text-[10px] text-[rgb(var(--app-text-muted))] mb-1.5 leading-snug">
           Динамическая модель
-          {realRatePerKg != null ? ` · ~${realRatePerKg.toFixed(1)} ккал/кг жира` : ""}
-          {targetRatePerKg != null ? ` (план ${targetRatePerKg.toFixed(0)})` : ""}
+          {realRatePerKg != null ? ` · ~${formatDeficitPerKgFat(realRatePerKg)}` : ""}
+          {targetRatePerKg != null ? ` (план ${formatDeficitPerKgFatValue(targetRatePerKg)})` : ""}
         </p>
       ) : null}
       <div className={cn("w-full flex-1 min-h-0", tall ? "min-h-[14rem]" : "min-h-[12rem]")}>
@@ -104,9 +117,15 @@ export function WeightProjectionChart({
                 fontSize: 11,
                 padding: "6px 10px",
               }}
-              formatter={(value) => [formatBodyWeight(Number(value ?? 0)), "Вес"]}
+              formatter={(value, name) => [
+                formatBodyWeight(Number(value ?? 0)),
+                name === "plannedWeight" ? "План" : "Фактический прогноз",
+              ]}
               labelFormatter={(_, payload) => {
-                const row = payload?.[0]?.payload as { date?: string; deficit?: number };
+                const row = payload?.[0]?.payload as {
+                  date?: string;
+                  deficit?: number;
+                };
                 const datePart = row?.date ? fmtDate(row.date) : "";
                 if (row?.deficit != null && row.deficit > 0) {
                   return `${datePart} · дефицит ${formatEnergy(row.deficit)}/д`;
@@ -114,17 +133,39 @@ export function WeightProjectionChart({
                 return datePart;
               }}
             />
+            {showPlannedLine ? (
+              <Legend
+                verticalAlign="top"
+                align="right"
+                iconType="plainline"
+                wrapperStyle={{ fontSize: 10, paddingBottom: 4 }}
+              />
+            ) : null}
             <Line
               type="monotone"
               dataKey="weight"
-              stroke="#22C55E"
+              stroke={ACTUAL_LINE_COLOR}
               strokeWidth={tall ? 2.5 : 2}
-              dot={{ r: tall ? 3.5 : 3, fill: "#22C55E", stroke: "#fff", strokeWidth: 1.5 }}
+              dot={{ r: tall ? 3.5 : 3, fill: ACTUAL_LINE_COLOR, stroke: "#fff", strokeWidth: 1.5 }}
               activeDot={{ r: 5, fill: "#059669", stroke: "#fff", strokeWidth: 2 }}
-              name="Вес"
+              name="Фактический прогноз"
               connectNulls
               isAnimationActive
             />
+            {showPlannedLine ? (
+              <Line
+                type="monotone"
+                dataKey="plannedWeight"
+                stroke={PLANNED_LINE_COLOR}
+                strokeWidth={tall ? 2 : 1.75}
+                strokeDasharray="6 4"
+                dot={false}
+                activeDot={{ r: 4, fill: PLANNED_LINE_COLOR, stroke: "#fff", strokeWidth: 1.5 }}
+                name="План"
+                connectNulls
+                isAnimationActive
+              />
+            ) : null}
           </LineChart>
         </ResponsiveContainer>
       </div>

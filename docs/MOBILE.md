@@ -2,7 +2,7 @@
 
 Android-клиент Forma (React Native). После Desktop RC desktop считается близким к feature-complete, а mobile — основной активный продуктовый фокус. Цель: самостоятельное daily-driver приложение, а не простое companion-приложение к desktop.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -32,7 +32,7 @@ Desktop-only возможности: [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md),
 | Body | Partial | Measurements, history and charts required |
 | Analytics | Partial | Must be usable without desktop; no requirement for desktop Plotly/deep parity |
 | Cycle | Partial | Available when female profile selected |
-| Cloud / sync | Partial | FormaSync; conflicts — pilot `food_entries` |
+| Cloud / sync | Partial | `FormaSyncEngine` + `syncOrchestrator` / queue; conflicts — pilot `food_entries` |
 
 ---
 
@@ -52,6 +52,7 @@ Mobile completion scope for the current roadmap:
 | Calendar | Week start default is Saturday |
 | Health Connect | Stable local ingest, diagnostics and sync/export behavior |
 | Sync | FormaSync status, upload/download, conflict visibility appropriate for mobile |
+| Units | Respect profile `units_system` where implemented; storage/sync payloads stay metric/SI |
 
 **Остаётся desktop-only for now:** FIT/Polar import pipeline, large DB import/warmup, strength HR deep sub-tab, advanced food forecast UI, developer DB tools, packaged analytics export.
 
@@ -67,6 +68,19 @@ Roadmap приоритеты: [ROADMAP.md](./ROADMAP.md).
 | `cloud` | Local DB + FormaSync |
 | `legacy_api` | REST к ПК (`SyncService`) |
 | `local_hc_test` | QA HC |
+
+---
+
+## Units and profile sync
+
+Desktop backend exposes `user_profile.units_system` as `metric` / `american`. The current desktop frontend uses `frontend/src/utils/americanUnits.ts` for presentation/input conversion while database columns remain metric (`kg`, `cm`, meters, seconds).
+
+Mobile should treat unit preference as a user preference, not a storage schema change:
+
+- persist/sync the profile preference through FormaSync when user preferences are included;
+- keep local domain values metric/SI internally;
+- convert at UI boundaries only;
+- avoid reintroducing removed aliases such as `imperial` unless a migration/compatibility plan is added.
 
 ---
 
@@ -107,7 +121,8 @@ Sync **не** отдельная bottom tab — только Settings.
 - Analytics must work without desktop; local numbers may still diverge from desktop API.
 - Future analytics should include explainable metric cards and recovery-aware interpretation after HC/sync validation; this is planned, not implemented.
 - Cycle visibility must depend on female profile.
-- Saturday week start must be verified across mobile calendars.
+- Saturday week start: implemented in `mobile/src/utils/formaWeek.ts` (`formaWeek.test.ts`); needs device QA.
+- Recovery analytics: `analytics-engine/recovery.ts` stub exists; no UI yet.
 - Health Connect and FormaSync require end-to-end validation.
 
 Expected desktop-only gaps remain: FIT/Polar import, large DB import/warmup, strength HR deep analytics, developer tools.

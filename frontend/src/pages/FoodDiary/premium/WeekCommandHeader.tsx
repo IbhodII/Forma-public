@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { FoodPhase } from "../../../api/food";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
+import { useUnits } from "../../../hooks/useUnits";
 import { formatDateRu } from "../../../utils/format";
 import type { WeekSummary } from "../useWeekSummary";
 
@@ -33,6 +34,8 @@ export function WeekCommandHeader({
   canAdd: boolean;
   formatEnergy: (n: number) => string;
 }) {
+  const { formatFoodWeight } = useUnits();
+
   const pills = [
     {
       label: "Ср. ккал",
@@ -61,7 +64,7 @@ export function WeekCommandHeader({
     },
     {
       label: "Ср. белок",
-      value: summary.avgProtein != null ? `${summary.avgProtein} г` : "—",
+      value: summary.avgProtein != null ? formatFoodWeight(summary.avgProtein) : "—",
     },
     {
       label: "Заполнено",

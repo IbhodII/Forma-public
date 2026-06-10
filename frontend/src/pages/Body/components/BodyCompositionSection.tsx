@@ -9,7 +9,7 @@ import { deriveComposition, geneticProgress } from "../utils/bodyComposition";
 import { formatMetricNum } from "../../../utils/bodyMetrics";
 
 export function BodyCompositionSection({ summary }: { summary: BodyMetricsSummary | undefined }) {
-  const { formatBodyWeight } = useUnits();
+  const { formatBodyWeight, formatHeight } = useUnits();
   const { data: profile } = useUserProfile();
   const { data: genetic, isLoading: geneticLoading } = useQuery({
     queryKey: queryKeys.bodyGeneticLimit,
@@ -86,7 +86,7 @@ export function BodyCompositionSection({ summary }: { summary: BodyMetricsSummar
             {comp.ffmi != null ? comp.ffmi.toFixed(1) : "—"}
           </p>
           <p className="text-xs text-[rgb(var(--app-text-muted))]">
-            {profile?.height_cm ? `рост ${profile.height_cm} см` : "укажите рост в профиле"}
+            {profile?.height_cm ? `рост ${formatHeight(profile.height_cm)}` : "укажите рост в профиле"}
           </p>
         </div>
       </div>

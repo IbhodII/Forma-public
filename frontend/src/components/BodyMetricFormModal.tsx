@@ -6,18 +6,19 @@ import { queryKeys } from "../hooks/queryKeys";
 import type { BodyMetricCreate } from "../types";
 import {
   BODY_METRIC_FORM_SECTIONS,
+  BODY_METRIC_STEP,
   type BodyMetricFieldKey,
   bodyFieldsFromRow,
   buildBodyMetricPayload,
+  formatBodyMetricValue,
+  isValidBodyMetricInput,
 } from "../utils/bodyMetrics";
 import { formatDateRu, localTodayIso } from "../utils/format";
 import { ErrorAlert } from "./ErrorAlert";
 
 function fmtRefValue(v: unknown): string {
-  if (v == null || v === "") return "";
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return "";
-  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+  const s = formatBodyMetricValue(v);
+  return s === "—" ? "" : s;
 }
 
 function fmtRefHint(
@@ -109,6 +110,9 @@ export function BodyMetricFormModal({
           parsed[f.key] = null;
           continue;
         }
+        if (!isValidBodyMetricInput(raw)) {
+          return;
+        }
         const num = Number(raw);
         if (!Number.isFinite(num)) {
           return;
@@ -192,7 +196,7 @@ export function BodyMetricFormModal({
                     </span>
                     <input
                       type="number"
-                      step={f.step ?? 0.1}
+                      step={f.step ?? BODY_METRIC_STEP}
                       min={0}
                       max={f.max}
                       value={values[f.key] ?? ""}

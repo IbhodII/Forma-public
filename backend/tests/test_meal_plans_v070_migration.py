@@ -52,18 +52,6 @@ def meal_migration_env(monkeypatch):
             VALUES (7, 1, 'TestPlan', 'cut', 1)
             """
         )
-        conn.execute(
-            """
-            INSERT INTO shared.meal_templates (id, user_id, name, meal_type, phase)
-            VALUES (42, 1, 'TestTpl', 'lunch', 'cut')
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO shared.daily_meal_plans (id, user_id, name, phase, is_custom)
-            VALUES (7, 1, 'TestPlan', 'cut', 1)
-            """
-        )
         conn.commit()
     finally:
         conn.close()
@@ -81,11 +69,10 @@ def test_v070_copies_meal_tables_preserves_ids(meal_migration_env):
         plan = conn.execute("SELECT id, name FROM main.daily_meal_plans WHERE id = 7").fetchone()
         assert plan is not None
         assert plan["name"] == "TestPlan"
-        # dual-read: legacy shared row still present
         shared_tpl = conn.execute(
-            "SELECT id FROM shared.meal_templates WHERE id = 42"
+            "SELECT name FROM shared.sqlite_master WHERE type='table' AND name='meal_templates'"
         ).fetchone()
-        assert shared_tpl is not None
+        assert shared_tpl is None
         assert mq(conn, "meal_templates") == "main.meal_templates"
     finally:
         conn.close()

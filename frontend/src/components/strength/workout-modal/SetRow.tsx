@@ -3,6 +3,7 @@ import type { StrengthNextWorkoutSuggestion } from "../../../api/strength";
 import { formatWeightIncreaseHint } from "../../../api/strength";
 import { BarbellWeightInput } from "../../BarbellWeightInput";
 import type { WorkoutApproach } from "../workoutApproaches";
+import { isPlankExercise } from "../../../utils/strengthExercise";
 import { cn } from "../../../lib/utils";
 
 export function SetRow({
@@ -30,6 +31,19 @@ export function SetRow({
   onDuplicate: () => void;
   onRemove: () => void;
 }) {
+  const isTimeBased = row.is_bodyweight || isPlankExercise(row.exercise);
+
+  const handleExerciseChange = (exercise: string) => {
+    const isBw = isPlankExercise(exercise);
+    onChange({
+      exercise,
+      is_bodyweight: isBw,
+      ...(isBw
+        ? { reps: "1", duration_sec: row.duration_sec || "30" }
+        : { duration_sec: "" }),
+    });
+  };
+
   return (
     <div
       className={cn(
@@ -81,7 +95,7 @@ export function SetRow({
             type="text"
             list={listId}
             value={row.exercise}
-            onChange={(e) => onChange({ exercise: e.target.value })}
+            onChange={(e) => handleExerciseChange(e.target.value)}
             placeholder="Упражнение"
             className="input-field text-sm w-full"
           />
@@ -93,7 +107,7 @@ export function SetRow({
         </div>
       ) : null}
 
-      {row.is_bodyweight ? (
+      {isTimeBased ? (
         <div className="grid grid-cols-1 gap-2">
           <label className="text-xs text-[rgb(var(--app-text-muted))]">
             Время (сек)

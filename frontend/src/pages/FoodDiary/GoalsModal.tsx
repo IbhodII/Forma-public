@@ -5,6 +5,13 @@ import { ErrorAlert } from "../../components/ErrorAlert";
 import { useConfirmClose } from "../../hooks/useConfirmClose";
 import { ModalShell } from "../../components/ui/modal";
 import { useUnits } from "../../hooks/useUnits";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE_COMPACT,
+} from "./mealModalLayout";
+
+const GOALS_FORM_ID = "day-goals-form";
 
 export function GoalsModal({
   date,
@@ -54,10 +61,28 @@ export function GoalsModal({
 
   return (
     <>
-    <ModalShell open onClose={requestClose} dismissOnOverlay={false} title={`Нормы на ${date}`} size="md">
+    <ModalShell
+      open
+      onClose={requestClose}
+      dismissOnOverlay={false}
+      title={`Нормы на ${date}`}
+      size={MEAL_MODAL_SIZE_COMPACT}
+      className={MEAL_MODAL_PANEL_CLASS}
+      footer={
+        <>
+          <button type="button" onClick={requestClose} className="btn-secondary">
+            Отмена
+          </button>
+          <button type="submit" form={GOALS_FORM_ID} disabled={isPending} className="btn-primary">
+            {isPending ? "Сохранение…" : "Сохранить"}
+          </button>
+        </>
+      }
+    >
       {formError && <ErrorAlert message={formError} />}
       <form
-        className="grid grid-cols-2 gap-3"
+        id={GOALS_FORM_ID}
+        className="grid grid-cols-1 sm:grid-cols-2 gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit({
@@ -107,14 +132,6 @@ export function GoalsModal({
             </span>
           )}
         </label>
-        <div className="col-span-2 flex gap-2 pt-2">
-          <button type="submit" disabled={isPending} className="btn-primary">
-            {isPending ? "Сохранение…" : "Сохранить"}
-          </button>
-          <button type="button" onClick={requestClose} className="btn-secondary">
-            Отмена
-          </button>
-        </div>
       </form>
     </ModalShell>
     <ConfirmModal

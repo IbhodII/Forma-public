@@ -33,7 +33,7 @@ export function StrengthHrBlockEditorPanel({
   onResetAuto,
 }: {
   blocks: StrengthHrEditableBlock[];
-  sets: StrengthHrSetMetrics[];
+  sets: StrengthHrSetMetrics[] | null | undefined;
   warnings?: string[];
   dirty?: boolean;
   saving?: boolean;
@@ -47,9 +47,10 @@ export function StrengthHrBlockEditorPanel({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [splitSecByBlock, setSplitSecByBlock] = useState<Record<number, number>>({});
 
+  const safeSets = sets ?? [];
   const setOptions = useMemo(
-    () => [...sets].sort((a, b) => a.order_index - b.order_index),
-    [sets],
+    () => [...safeSets].sort((a, b) => a.order_index - b.order_index),
+    [safeSets],
   );
 
   const toggleSelect = (blockId: number) => {

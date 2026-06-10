@@ -163,6 +163,7 @@ export interface ExerciseCatalogItem {
 export interface ExerciseCatalogDetailItem extends ExerciseCatalogItem {
   display_name: string;
   is_archived: boolean;
+  is_shared?: boolean;
   created_at?: string | null;
   updated_at?: string | null;
 }

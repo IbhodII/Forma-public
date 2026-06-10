@@ -1,5 +1,14 @@
 export function isPlankExercise(name: string): boolean {
-  return name.trim().toLowerCase().replace(/ё/g, "е").includes("планк");
+  return isTimeBasedExercise(name);
+}
+
+/** Упражнения на время (планка и аналоги). */
+export function isTimeBasedExercise(name: string): boolean {
+  const n = name.trim().toLowerCase().replace(/ё/g, "е");
+  if (n.includes("планк")) return true;
+  if (/\bplank\b/.test(n)) return true;
+  if (n.includes("wall sit") || n.includes("hollow hold")) return true;
+  return false;
 }
 
 export interface PresetSetLike {

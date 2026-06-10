@@ -75,6 +75,7 @@ export interface WorkoutPointsResponse {
     temperature_c?: number | null;
     heart_rate?: number | null;
     distance_m?: number | null;
+    power_watts?: number | null;
   }[];
 }
 

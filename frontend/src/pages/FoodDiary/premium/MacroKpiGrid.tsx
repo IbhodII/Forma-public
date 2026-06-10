@@ -121,7 +121,7 @@ export function MacroKpiGrid({
 
         const display =
           key === "fiber"
-            ? `${formatFoodWeight(current)} / ${formatFoodWeight(target)} г`
+            ? `${formatFoodWeight(current)} / ${formatFoodWeight(target)}`
             : cfg.unit === "kcal"
               ? formatEnergy(current)
               : `${formatFoodWeight(current)}`;

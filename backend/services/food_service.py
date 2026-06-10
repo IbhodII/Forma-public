@@ -2128,6 +2128,11 @@ def _ensure_meal_plan_user_schema(conn: sqlite3.Connection) -> None:
         attach_shared(conn)
     m._ensure_daily_meal_plans_is_custom(conn)
     m._ensure_weekly_meal_schedule(conn)
+    from database.meal_plans_storage import meal_plan_schema
+
+    if meal_plan_schema(conn) == "main":
+        _MEAL_PLAN_USER_SCHEMA_READY = True
+        return
     m._migration_v029_meal_plan_items(conn)
     m._migration_v046_meal_plan_items_drop_product_fk(conn)
     m._migration_v063_meal_plans_user_scope(conn)
@@ -2361,6 +2366,107 @@ def _existing_meal_types_for_day(conn: sqlite3.Connection, day: str, phase: str)
     return {_validate_meal_type(str(r[0])) for r in rows}
 
 
+def _entry_key(meal_type: str, product_id: int, quantity: float) -> tuple[str, int, float]:
+    return (_validate_meal_type(meal_type), int(product_id), round(float(quantity), 1))
+
+
+def _existing_entry_keys_for_day(
+    conn: sqlite3.Connection,
+    day: str,
+    phase: str,
+) -> set[tuple[str, int, float]]:
+    rows = conn.execute(
+        """
+        SELECT meal_type, product_id, quantity FROM food_entries
+        WHERE date = ? AND phase = ? AND user_id = ?
+        """,
+        (day, phase, get_current_user_id()),
+    ).fetchall()
+    return {_entry_key(str(r[0]), int(r[1]), float(r[2])) for r in rows}
+
+
+def resolve_meal_plan_apply_dates(
+    plan: dict[str, Any],
+    start_date: str,
+    end_date: str | None,
+) -> tuple[date, date, list[str]]:
+    """Диапазон дат применения рациона (без сдвига к началу календарной недели)."""
+    try:
+        start = date.fromisoformat(str(start_date)[:10])
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Некорректная start_date") from err
+
+    is_weekly = bool(plan.get("is_weekly"))
+    if end_date:
+        try:
+            end = date.fromisoformat(str(end_date)[:10])
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail="Некорректная end_date") from err
+    elif is_weekly:
+        end = start + timedelta(days=6)
+    else:
+        end = start
+
+    if end < start:
+        raise HTTPException(status_code=400, detail="end_date раньше start_date")
+
+    dates: list[str] = []
+    current = start
+    while current <= end:
+        if is_weekly and (current - start).days > 6:
+            break
+        dates.append(current.isoformat())
+        current += timedelta(days=1)
+    if not dates:
+        raise HTTPException(status_code=400, detail="Пустой диапазон дат")
+    return start, end, dates
+
+
+def preview_meal_plan_range(
+    plan_id: int,
+    start_date: str,
+    end_date: str | None,
+    phase: str,
+) -> dict[str, Any]:
+    ph = _validate_phase(phase)
+    plan = get_meal_plan(plan_id)
+    if str(plan["phase"]) != ph:
+        raise HTTPException(
+            status_code=400,
+            detail="Рацион относится к другому режиму (сушка/набор)",
+        )
+
+    start, end, dates = resolve_meal_plan_apply_dates(plan, start_date, end_date)
+    conn = get_db()
+    try:
+        day_rows: list[dict[str, Any]] = []
+        total_existing = 0
+        for d in dates:
+            count = conn.execute(
+                """
+                SELECT COUNT(*) FROM food_entries
+                WHERE date = ? AND phase = ? AND user_id = ?
+                """,
+                (d, ph, get_current_user_id()),
+            ).fetchone()[0]
+            total_existing += int(count)
+            day_rows.append({"date": d, "existing_entries": int(count)})
+    finally:
+        conn.close()
+
+    return {
+        "plan_id": plan_id,
+        "plan_name": plan["name"],
+        "phase": ph,
+        "is_weekly": bool(plan.get("is_weekly")),
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "dates": dates,
+        "total_existing_entries": total_existing,
+        "days": day_rows,
+    }
+
+
 def _apply_plan_items_for_day(
     conn: sqlite3.Connection,
     plan_id: int,
@@ -2387,14 +2493,15 @@ def _apply_plan_items_for_day(
         mt = _validate_meal_type(str(r["meal_type"]))
         by_meal.setdefault(mt, []).append((int(r["product_id"]), float(r["quantity"])))
 
-    existing = _existing_meal_types_for_day(conn, day, phase) if not overwrite else set()
+    existing_keys = set() if overwrite else _existing_entry_keys_for_day(conn, day, phase)
     added_entries: list[dict[str, Any]] = []
     total = 0
 
     for meal_type, items in by_meal.items():
-        if not overwrite and meal_type in existing:
-            continue
         for product_id, quantity in items:
+            key = _entry_key(meal_type, product_id, quantity)
+            if not overwrite and key in existing_keys:
+                continue
             _get_product(conn, product_id)
             cur = conn.execute(
                 """
@@ -2418,6 +2525,7 @@ def _apply_plan_items_for_day(
             if row:
                 entry = _entry_from_row(row)
                 added_entries.append(entry)
+                existing_keys.add(key)
                 total += 1
     return total, added_entries
 
@@ -2826,11 +2934,91 @@ def get_meal_plan_suggestion(day: str, phase: str) -> dict[str, Any]:
     }
 
 
+def _apply_template_items_for_day(
+    conn: sqlite3.Connection,
+    template_id: int,
+    day: str,
+    phase: str,
+    meal_type: str,
+    *,
+    overwrite: bool,
+) -> tuple[int, list[dict[str, Any]], str]:
+    uid = _meal_plan_owner_id()
+    tpl = conn.execute(
+        f"""
+        SELECT t.name, t.meal_type
+        FROM {mq(conn, "meal_templates")} t
+        WHERE t.id = ? AND t.user_id = ?
+        """,
+        (template_id, uid),
+    ).fetchone()
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    mt = _validate_meal_type(meal_type or str(tpl["meal_type"]))
+    items = conn.execute(
+        f"""
+        SELECT i.product_id, i.quantity,
+               COALESCE(p.protein, 0) AS protein, COALESCE(p.fat, 0) AS fat,
+               COALESCE(p.carbs, 0) AS carbs, COALESCE(p.calories, 0) AS calories
+        FROM {mq(conn, "meal_template_items")} i
+        JOIN shared.food_products p ON p.id = i.product_id
+        WHERE i.template_id = ?
+        ORDER BY i.id
+        """,
+        (template_id,),
+    ).fetchall()
+    if not items:
+        return 0, [], str(tpl["name"])
+
+    existing_keys = set() if overwrite else _existing_entry_keys_for_day(conn, day, phase)
+    added_entries: list[dict[str, Any]] = []
+    total = 0
+    for row in items:
+        product_id = int(row["product_id"])
+        quantity = float(row["quantity"])
+        key = _entry_key(mt, product_id, quantity)
+        if not overwrite and key in existing_keys:
+            continue
+        _get_product(conn, product_id)
+        cur = conn.execute(
+            """
+            INSERT INTO food_entries (
+                date, phase, product_id, quantity, meal_type, notes,
+                protein_per100, fat_per100, carbs_per100, calories_per100, user_id
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+            """,
+            (
+                day,
+                phase,
+                product_id,
+                quantity,
+                mt,
+                float(row["protein"]),
+                float(row["fat"]),
+                float(row["carbs"]),
+                float(row["calories"]),
+                get_current_user_id(),
+            ),
+        )
+        entry_id = cur.lastrowid
+        erow = conn.execute(
+            f"{_ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?",
+            (entry_id, get_current_user_id()),
+        ).fetchone()
+        if erow:
+            added_entries.append(_entry_from_row(erow))
+            existing_keys.add(key)
+            total += 1
+    return total, added_entries, str(tpl["name"])
+
+
 def _apply_meal_plan_templates_day(
     plan: dict[str, Any],
     plan_id: int,
     d: str,
     ph: str,
+    *,
+    overwrite: bool = False,
 ) -> dict[str, Any]:
     if not plan["templates"]:
         return {"total_added": 0, "meals": [], "entries": []}
@@ -2839,32 +3027,43 @@ def _apply_meal_plan_templates_day(
     meals_result: list[dict[str, Any]] = []
     total_added = 0
 
-    for ref in plan["templates"]:
-        if should_skip_meal_on_day(
-            str(ref["meal_type"]),
-            str(ref["template_name"]),
-            d,
-        ):
-            continue
-        tid, tname = resolve_template_id_for_day(
-            int(ref["template_id"]),
-            str(ref["template_name"]),
-            str(ref["meal_type"]),
-            d,
-            ph,
-        )
-        applied = apply_template(tid, d, ph, ref["meal_type"])
-        added = int(applied["added"])
-        total_added += added
-        all_entries.extend(applied["entries"])
-        meals_result.append(
-            {
-                "template_id": tid,
-                "template_name": applied["template_name"],
-                "meal_type": applied["meal_type"],
-                "added": added,
-            }
-        )
+    conn = get_db()
+    try:
+        for ref in plan["templates"]:
+            if should_skip_meal_on_day(
+                str(ref["meal_type"]),
+                str(ref["template_name"]),
+                d,
+            ):
+                continue
+            tid, tname = resolve_template_id_for_day(
+                int(ref["template_id"]),
+                str(ref["template_name"]),
+                str(ref["meal_type"]),
+                d,
+                ph,
+            )
+            added, entries, tpl_name = _apply_template_items_for_day(
+                conn,
+                tid,
+                d,
+                ph,
+                ref["meal_type"],
+                overwrite=overwrite,
+            )
+            total_added += added
+            all_entries.extend(entries)
+            meals_result.append(
+                {
+                    "template_id": tid,
+                    "template_name": tpl_name or tname,
+                    "meal_type": _validate_meal_type(ref["meal_type"]),
+                    "added": added,
+                }
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
     return {
         "total_added": total_added,
@@ -2921,7 +3120,7 @@ def apply_meal_plan(
         raise HTTPException(status_code=400, detail="В рационе нет приёмов пищи")
     if replace_existing:
         clear_day_entries(d, ph)
-    tpl = _apply_meal_plan_templates_day(plan, plan_id, d, ph)
+    tpl = _apply_meal_plan_templates_day(plan, plan_id, d, ph, overwrite=replace_existing)
     return {
         "plan_id": plan_id,
         "plan_name": plan["name"],
@@ -2950,27 +3149,8 @@ def apply_meal_plan_range(
             detail="Рацион относится к другому режиму (сушка/набор)",
         )
 
-    try:
-        start = date.fromisoformat(str(start_date)[:10])
-    except ValueError as err:
-        raise HTTPException(status_code=400, detail="Некорректная start_date") from err
-
     is_weekly = bool(plan.get("is_weekly"))
-    if is_weekly:
-        start_day = settings_service.get_week_start_day()
-        start = week_calendar.week_start_for_date(start, start_day)
-    if end_date:
-        try:
-            end = date.fromisoformat(str(end_date)[:10])
-        except ValueError as err:
-            raise HTTPException(status_code=400, detail="Некорректная end_date") from err
-    elif is_weekly:
-        end = start + timedelta(days=6)
-    else:
-        end = start
-
-    if end < start:
-        raise HTTPException(status_code=400, detail="end_date раньше start_date")
+    start, end, apply_dates = resolve_meal_plan_apply_dates(plan, start_date, end_date)
 
     conn = get_db()
     try:
@@ -2988,12 +3168,8 @@ def apply_meal_plan_range(
     total_added = 0
     cleared = 0
 
-    current = start
-    while current <= end:
-        d = current.isoformat()
-        day_offset = _meal_plan_day_offset(plan, d) if is_weekly else 0
-        if is_weekly and day_offset > 6:
-            break
+    for d in apply_dates:
+        day_offset = (date.fromisoformat(d) - start).days if is_weekly else 0
 
         if overwrite:
             cleared += clear_day_entries(d, ph)
@@ -3016,16 +3192,20 @@ def apply_meal_plan_range(
             all_entries.extend(entries)
             days_result.append({"date": d, "added": added})
         else:
-            day_tpl = _apply_meal_plan_templates_day(plan, plan_id, d, ph)
+            day_tpl = _apply_meal_plan_templates_day(
+                plan,
+                plan_id,
+                d,
+                ph,
+                overwrite=overwrite,
+            )
             added = int(day_tpl["total_added"])
             total_added += added
             all_entries.extend(day_tpl["entries"])
             meals_result.extend(day_tpl["meals"])
             days_result.append({"date": d, "added": added})
 
-        current += timedelta(days=1)
-
-    apply_week = (end - start).days >= 1 or is_weekly
+    apply_week = len(apply_dates) > 1 or is_weekly
     week_stats = None
     if apply_week:
         week_stats = get_week_log(start.isoformat(), ph)
@@ -3052,7 +3232,7 @@ def apply_meal_plan_week(
     anchor_date: str,
     phase: str,
     *,
-    replace_existing: bool = True,
+    replace_existing: bool = False,
 ) -> dict[str, Any]:
     """Заполнить дневник на 7 дней от anchor_date (совместимость)."""
     plan = get_meal_plan(plan_id)

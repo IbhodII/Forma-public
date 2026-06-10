@@ -14,4 +14,5 @@ def ensure_shared_schema(conn: sqlite3.Connection) -> None:
 
     m._ensure_shared_food_catalog(conn)
     m._ensure_shared_stretching_exercises(conn)
+    m._ensure_shared_strength_exercises(conn)
     m._ensure_shared_bike_reference(conn)

@@ -3,8 +3,10 @@ import { useState } from "react";
 import type { StrengthNextWorkoutSuggestion } from "../../../api/strength";
 import { cn } from "../../../lib/utils";
 import {
+  applyRoundToAllRounds,
   cloneWorkoutApproach,
   cloneWorkoutBlock,
+  ensureBlockRoundApproaches,
   newWorkoutApproach,
   newWorkoutBlock,
   type WorkoutApproach,
@@ -71,10 +73,59 @@ export function WorkoutBlocksEditor({
 }) {
   const [completedRounds, setCompletedRounds] = useState<Record<string, number>>({});
   const [expandedWorkoutBlocks, setExpandedWorkoutBlocks] = useState<Record<string, boolean>>({});
+  const [activeRoundByBlock, setActiveRoundByBlock] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<"simple" | "structure">("simple");
 
   const updateBlock = (blockIndex: number, patch: Partial<WorkoutBlock>) => {
     onReplaceBlocks(blocks.map((b, i) => (i === blockIndex ? { ...b, ...patch } : b)));
+  };
+
+  const patchBlock = (blockIndex: number, next: WorkoutBlock) => {
+    onReplaceBlocks(blocks.map((b, i) => (i === blockIndex ? next : b)));
+  };
+
+  const activeRoundFor = (block: WorkoutBlock) => {
+    const idx = activeRoundByBlock[block.id] ?? 0;
+    return Math.min(Math.max(0, idx), Math.max(0, block.rounds - 1));
+  };
+
+  const updateBlockRounds = (blockIndex: number, rounds: number) => {
+    const block = blocks[blockIndex];
+    if (!block) return;
+    patchBlock(blockIndex, ensureBlockRoundApproaches({ ...block, rounds }, useAmerican));
+  };
+
+  const updateRoundApproach = (
+    blockIndex: number,
+    roundIndex: number,
+    approachIndex: number,
+    patch: Partial<WorkoutApproach>,
+  ) => {
+    const block = ensureBlockRoundApproaches(blocks[blockIndex], useAmerican);
+    const roundApproaches = block.roundApproaches?.map((round, ri) =>
+      ri === roundIndex
+        ? round.map((row, j) => (j === approachIndex ? { ...row, ...patch } : row))
+        : round,
+    );
+    const approaches =
+      roundIndex === 0
+        ? roundApproaches?.[0]?.map(cloneWorkoutApproach) ?? block.approaches
+        : block.approaches;
+    patchBlock(blockIndex, { ...block, roundApproaches, approaches });
+  };
+
+  const updateRoundApproaches = (
+    blockIndex: number,
+    roundIndex: number,
+    approaches: WorkoutApproach[],
+  ) => {
+    const block = ensureBlockRoundApproaches(blocks[blockIndex], useAmerican);
+    const roundApproaches = block.roundApproaches?.map((round, ri) =>
+      ri === roundIndex ? approaches : round,
+    );
+    const nextApproaches =
+      roundIndex === 0 ? approaches.map(cloneWorkoutApproach) : block.approaches;
+    patchBlock(blockIndex, { ...block, roundApproaches, approaches: nextApproaches });
   };
 
   const updateApproach = (
@@ -100,7 +151,11 @@ export function WorkoutBlocksEditor({
       type === "normal"
         ? [newWorkoutApproach(useAmerican)]
         : [newWorkoutApproach(useAmerican), newWorkoutApproach(useAmerican)];
-    onReplaceBlocks([...blocks, newWorkoutBlock(useAmerican, type, { approaches })]);
+    const block = newWorkoutBlock(useAmerican, type, { approaches });
+    onReplaceBlocks([
+      ...blocks,
+      type === "normal" ? block : ensureBlockRoundApproaches(block, useAmerican),
+    ]);
   };
 
   const duplicateBlock = (blockIndex: number) => {
@@ -398,12 +453,18 @@ export function WorkoutBlocksEditor({
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={block.type}
-                    onChange={(e) =>
-                      updateBlock(blockIndex, {
-                        type: e.target.value as WorkoutBlockType,
-                        rounds: e.target.value === "normal" ? 1 : Math.max(2, block.rounds),
-                      })
-                    }
+                    onChange={(e) => {
+                      const type = e.target.value as WorkoutBlockType;
+                      const next = ensureBlockRoundApproaches(
+                        {
+                          ...block,
+                          type,
+                          rounds: type === "normal" ? 1 : Math.max(2, block.rounds),
+                        },
+                        useAmerican,
+                      );
+                      patchBlock(blockIndex, next);
+                    }}
                     className="input-field text-sm w-auto min-w-[9rem]"
                   >
                     <option value="normal">Обычный блок</option>
@@ -426,9 +487,7 @@ export function WorkoutBlocksEditor({
                         min={1}
                         value={block.rounds}
                         onChange={(e) =>
-                          updateBlock(blockIndex, {
-                            rounds: Math.max(1, Number(e.target.value) || 1),
-                          })
+                          updateBlockRounds(blockIndex, Math.max(1, Number(e.target.value) || 1))
                         }
                         className="input-field h-9 w-20 text-sm tabular-nums"
                       />
@@ -587,10 +646,7 @@ export function WorkoutBlocksEditor({
               <div className="p-3 sm:p-4 space-y-3">
                 {block.type !== "normal" ? (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[rgb(var(--app-border)/0.65)] bg-[rgb(var(--app-surface-subtle)/0.35)] px-3 py-2 text-xs text-[rgb(var(--app-text-muted))]">
-                    <span>
-                      Быстрый режим: задайте упражнения и цели один раз, при сохранении будет создано{" "}
-                      {block.approaches.length * block.rounds} строк.
-                    </span>
+                    <span>Редактируйте каждый раунд отдельно. Изменения не копируются в другие раунды.</span>
                     <button
                       type="button"
                       className={cn(
@@ -611,83 +667,165 @@ export function WorkoutBlocksEditor({
                   </div>
                 ) : null}
 
-                <div className="space-y-2">
-                  {block.approaches.map((row, approachIndex) => (
-                    <div key={row.id} className="flex gap-2">
-                      <div className="flex flex-col gap-1 pt-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateApproaches(
-                              blockIndex,
-                              moveItem(block.approaches, approachIndex, approachIndex - 1),
-                            )
-                          }
-                          disabled={approachIndex === 0}
-                          className="h-7 w-7 rounded-md text-xs text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))] disabled:opacity-35"
-                          aria-label="Переместить выше"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateApproaches(
-                              blockIndex,
-                              moveItem(block.approaches, approachIndex, approachIndex + 1),
-                            )
-                          }
-                          disabled={approachIndex === block.approaches.length - 1}
-                          className="h-7 w-7 rounded-md text-xs text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))] disabled:opacity-35"
-                          aria-label="Переместить ниже"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <SetRow
-                          row={row}
-                          setNumber={approachIndex + 1}
-                          sequenceLabel={block.type === "normal" ? `${approachIndex + 1}` : `${approachIndex + 1}`}
-                          listId={`workout-block-${block.id}-${approachIndex}`}
-                          catalogNames={catalogNames}
-                          showExerciseName
-                          compact
-                          weightSuggestion={suggestionByExercise.get(row.exercise.trim())}
-                          onChange={(patch) => updateApproach(blockIndex, approachIndex, patch)}
-                          onDuplicate={() =>
-                            updateApproaches(blockIndex, [
-                              ...block.approaches.slice(0, approachIndex + 1),
-                              cloneWorkoutApproach(row),
-                              ...block.approaches.slice(approachIndex + 1),
-                            ])
-                          }
-                          onRemove={() =>
-                            updateApproaches(
-                              blockIndex,
-                              block.approaches.length <= 1
-                                ? [newWorkoutApproach(useAmerican)]
-                                : block.approaches.filter((_, i) => i !== approachIndex),
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {(() => {
+                  const hydrated =
+                    block.type === "normal"
+                      ? block
+                      : ensureBlockRoundApproaches(block, useAmerican);
+                  const roundIndex = block.type === "normal" ? 0 : activeRoundFor(hydrated);
+                  const roundRows =
+                    block.type === "normal"
+                      ? hydrated.approaches
+                      : hydrated.roundApproaches?.[roundIndex] ?? hydrated.approaches;
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateApproaches(blockIndex, [
-                      ...block.approaches,
-                      newWorkoutApproach(useAmerican),
-                    ])
-                  }
-                  className="btn-secondary text-sm"
-                >
-                  <Plus className="h-4 w-4" /> Добавить упражнение в блок
-                </button>
+                  return (
+                    <>
+                      {block.type !== "normal" ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {Array.from({ length: hydrated.rounds }, (_, i) => (
+                            <button
+                              key={`${block.id}-round-${i}`}
+                              type="button"
+                              className={cn(
+                                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                                roundIndex === i
+                                  ? "bg-[rgb(var(--app-accent)/0.14)] text-[rgb(var(--app-accent))]"
+                                  : "border border-[rgb(var(--app-border)/0.75)] text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))]",
+                              )}
+                              onClick={() =>
+                                setActiveRoundByBlock((prev) => ({ ...prev, [block.id]: i }))
+                              }
+                            >
+                              Раунд {i + 1}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className="rounded-lg border border-[rgb(var(--app-border)/0.75)] px-3 py-1.5 text-xs font-medium text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))]"
+                            onClick={() =>
+                              patchBlock(blockIndex, applyRoundToAllRounds(hydrated, roundIndex))
+                            }
+                          >
+                            Применить ко всем раундам
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        {roundRows.map((row, approachIndex) => (
+                          <div key={row.id} className="flex gap-2">
+                            <div className="flex flex-col gap-1 pt-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  block.type === "normal"
+                                    ? updateApproaches(
+                                        blockIndex,
+                                        moveItem(hydrated.approaches, approachIndex, approachIndex - 1),
+                                      )
+                                    : updateRoundApproaches(
+                                        blockIndex,
+                                        roundIndex,
+                                        moveItem(roundRows, approachIndex, approachIndex - 1),
+                                      )
+                                }
+                                disabled={approachIndex === 0}
+                                className="h-7 w-7 rounded-md text-xs text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))] disabled:opacity-35"
+                                aria-label="Переместить выше"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  block.type === "normal"
+                                    ? updateApproaches(
+                                        blockIndex,
+                                        moveItem(hydrated.approaches, approachIndex, approachIndex + 1),
+                                      )
+                                    : updateRoundApproaches(
+                                        blockIndex,
+                                        roundIndex,
+                                        moveItem(roundRows, approachIndex, approachIndex + 1),
+                                      )
+                                }
+                                disabled={approachIndex === roundRows.length - 1}
+                                className="h-7 w-7 rounded-md text-xs text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))] disabled:opacity-35"
+                                aria-label="Переместить ниже"
+                              >
+                                ↓
+                              </button>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <SetRow
+                                row={row}
+                                setNumber={approachIndex + 1}
+                                sequenceLabel={`${approachIndex + 1}`}
+                                listId={`workout-block-${block.id}-r${roundIndex}-${approachIndex}`}
+                                catalogNames={catalogNames}
+                                showExerciseName
+                                compact
+                                weightSuggestion={suggestionByExercise.get(row.exercise.trim())}
+                                onChange={(patch) =>
+                                  block.type === "normal"
+                                    ? updateApproach(blockIndex, approachIndex, patch)
+                                    : updateRoundApproach(blockIndex, roundIndex, approachIndex, patch)
+                                }
+                                onDuplicate={() =>
+                                  block.type === "normal"
+                                    ? updateApproaches(blockIndex, [
+                                        ...hydrated.approaches.slice(0, approachIndex + 1),
+                                        cloneWorkoutApproach(row),
+                                        ...hydrated.approaches.slice(approachIndex + 1),
+                                      ])
+                                    : updateRoundApproaches(blockIndex, roundIndex, [
+                                        ...roundRows.slice(0, approachIndex + 1),
+                                        cloneWorkoutApproach(row),
+                                        ...roundRows.slice(approachIndex + 1),
+                                      ])
+                                }
+                                onRemove={() =>
+                                  block.type === "normal"
+                                    ? updateApproaches(
+                                        blockIndex,
+                                        hydrated.approaches.length <= 1
+                                          ? [newWorkoutApproach(useAmerican)]
+                                          : hydrated.approaches.filter((_, i) => i !== approachIndex),
+                                      )
+                                    : updateRoundApproaches(
+                                        blockIndex,
+                                        roundIndex,
+                                        roundRows.length <= 1
+                                          ? [newWorkoutApproach(useAmerican)]
+                                          : roundRows.filter((_, i) => i !== approachIndex),
+                                      )
+                                }
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          block.type === "normal"
+                            ? updateApproaches(blockIndex, [
+                                ...hydrated.approaches,
+                                newWorkoutApproach(useAmerican),
+                              ])
+                            : updateRoundApproaches(blockIndex, roundIndex, [
+                                ...roundRows,
+                                newWorkoutApproach(useAmerican),
+                              ])
+                        }
+                        className="btn-secondary text-sm"
+                      >
+                        <Plus className="h-4 w-4" /> Добавить упражнение в блок
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </article>

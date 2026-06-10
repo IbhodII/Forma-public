@@ -4,6 +4,8 @@
 
 Эта папка — **справочник единиц** и указатель.
 
+Last updated: **2026-06-09**.
+
 ---
 
 ## Справочник единиц
@@ -20,18 +22,17 @@
 | Тема | Путь |
 |------|------|
 | Оглавление | [../README.md](../README.md) |
-| Установка (архив) | [../docs/archive/SETUP.md](../docs/archive/SETUP.md) |
+| Разработчик | [../docs/DEVELOPER_SETUP.md](../docs/DEVELOPER_SETUP.md) |
 | Контекст | [../docs/PROJECT_CONTEXT.md](../docs/PROJECT_CONTEXT.md) |
-| API (архив) | [../docs/archive/API.md](../docs/archive/API.md) |
-| Polar / FIT sync | [../SYNC.md](../SYNC.md), [../docs/archive/FIT_SYNC.md](../docs/archive/FIT_SYNC.md) |
+| Packaging / OAuth | [../docs/PACKAGING_SECRETS.md](../docs/PACKAGING_SECRETS.md), [../docs/AUTH_PKCE_AUDIT.md](../docs/AUTH_PKCE_AUDIT.md) |
 | БД | [../docs/DATABASE.md](../docs/DATABASE.md) |
-| Word (.docx) | [../docs/docx/](../docs/docx/) |
+| Архив установки | [../docs/archive/SETUP.md](../docs/archive/SETUP.md) (устарел) |
 
 ---
 
 ## Word
 
 ```powershell
-cd C:\Users\brett\Desktop\MyHealthDashboard
+cd /path/to/Forma-Public
 .\venv\Scripts\python.exe scripts\generate_docx_docs.py
 ```

@@ -8,8 +8,12 @@ import logging
 import mimetypes
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlencode
+
+import requests
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -37,43 +41,165 @@ SCOPES = [
 ]
 FOLDER_MIME = "application/vnd.google-apps.folder"
 _TOKEN_EXPIRY_BUFFER = timedelta(seconds=60)
+_GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+_GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 
 # PKCE + link_user_id для привязки облака к локальному профилю.
 _pending_google_oauth: dict[str, dict[str, Any]] = {}
 _pending_pkce_lock = threading.Lock()
 _MAX_PENDING_PKCE = 32
+_PENDING_GOOGLE_TTL_SEC = 600
 
 
-def _google_env() -> tuple[str, str, str]:
+def _google_flow_mode() -> Literal["pkce", "confidential"]:
+    from backend.core.env import google_oauth_flow_mode
+
+    return google_oauth_flow_mode()
+
+
+def _default_google_redirect_uri() -> str:
+    from backend.core.env import load_project_env
+
+    load_project_env()
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    if redirect_uri:
+        return redirect_uri
+    public_base = os.getenv("PUBLIC_API_BASE_URL", "").strip().rstrip("/")
+    if public_base:
+        return f"{public_base}/api/cloud/callback/google"
+    raise RuntimeError(
+        "GOOGLE_REDIRECT_URI не задан (.env). "
+        "Задайте GOOGLE_REDIRECT_URI или PUBLIC_API_BASE_URL и перезапустите API."
+    )
+
+
+def _google_public_env() -> tuple[str, str]:
     from backend.core.env import load_project_env
 
     load_project_env()
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
     if not client_id:
         raise RuntimeError(
             "GOOGLE_CLIENT_ID не задан (.env в корне проекта). Перезапустите API."
         )
+    return client_id, _default_google_redirect_uri()
+
+
+def _google_confidential_env() -> tuple[str, str, str]:
+    client_id, redirect_uri = _google_public_env()
+    from backend.core.env import load_project_env
+
+    load_project_env()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
     if not client_secret:
-        raise RuntimeError("GOOGLE_CLIENT_SECRET не задан (.env). Перезапустите API.")
-    if not redirect_uri:
-        raise RuntimeError("GOOGLE_REDIRECT_URI не задан (.env). Перезапустите API.")
+        raise RuntimeError(
+            "GOOGLE_OAUTH_FLOW=confidential требует GOOGLE_CLIENT_SECRET в .env. "
+            "Для PKCE без секрета удалите GOOGLE_OAUTH_FLOW или задайте pkce."
+        )
     return client_id, client_secret, redirect_uri
 
 
+def _google_env() -> tuple[str, str, str]:
+    """Legacy helper — confidential flow only."""
+    return _google_confidential_env()
+
+
 def _client_config(effective_redirect_uri: str | None = None) -> dict[str, Any]:
-    client_id, client_secret, default_redirect = _google_env()
+    client_id, client_secret, default_redirect = _google_confidential_env()
     redirect_uri = (effective_redirect_uri or default_redirect).strip()
     return {
         "web": {
             "client_id": client_id,
             "client_secret": client_secret,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_uri": _GOOGLE_AUTH_URI,
+            "token_uri": _GOOGLE_TOKEN_URI,
             "redirect_uris": [redirect_uri],
         }
     }
+
+
+def _pkce_client_config(effective_redirect_uri: str | None = None) -> dict[str, Any]:
+    client_id, default_redirect = _google_public_env()
+    redirect_uri = (effective_redirect_uri or default_redirect).strip()
+    return {
+        "installed": {
+            "client_id": client_id,
+            "auth_uri": _GOOGLE_AUTH_URI,
+            "token_uri": _GOOGLE_TOKEN_URI,
+            "redirect_uris": [redirect_uri],
+        }
+    }
+
+
+def _google_token_post(data: dict[str, str]) -> dict[str, Any]:
+    response = requests.post(
+        _GOOGLE_TOKEN_URI,
+        data=urlencode(data),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Google OAuth token request failed ({response.status_code}): "
+            f"{response.text[:240]}"
+        )
+    payload = response.json()
+    access = str(payload.get("access_token") or "").strip()
+    if not access:
+        raise RuntimeError("Google OAuth не вернул access_token")
+    return payload
+
+
+def _exchange_google_code_pkce(
+    code: str,
+    *,
+    client_id: str,
+    redirect_uri: str,
+    code_verifier: str,
+) -> dict[str, Any]:
+    return _google_token_post(
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier,
+        }
+    )
+
+
+def _refresh_google_token_pkce(client_id: str, refresh_token: str) -> dict[str, Any]:
+    return _google_token_post(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+        }
+    )
+
+
+def _credentials_from_token_payload(
+    payload: dict[str, Any],
+    *,
+    client_id: str,
+    client_secret: str | None,
+    refresh_token: str | None = None,
+) -> Credentials:
+    expires_in = payload.get("expires_in")
+    expiry: datetime | None = None
+    if expires_in is not None:
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+    creds = Credentials(
+        token=str(payload["access_token"]),
+        refresh_token=payload.get("refresh_token") or refresh_token,
+        token_uri=_GOOGLE_TOKEN_URI,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=SCOPES,
+    )
+    if expiry is not None:
+        creds.expiry = expiry.replace(tzinfo=None)
+    return creds
 
 
 def _parse_expires_at(raw: str | None) -> datetime | None:
@@ -179,26 +305,43 @@ def google_status_sync(*, user_id: int | None = None) -> dict[str, Any]:
     }
 
 
+def _prune_pending_google_oauth() -> None:
+    now = time.time()
+    expired = [
+        key
+        for key, value in _pending_google_oauth.items()
+        if now - float(value.get("created_at", 0)) > _PENDING_GOOGLE_TTL_SEC
+    ]
+    for key in expired:
+        _pending_google_oauth.pop(key, None)
+    while len(_pending_google_oauth) > _MAX_PENDING_PKCE:
+        oldest = next(iter(_pending_google_oauth))
+        _pending_google_oauth.pop(oldest, None)
+
+
 def _remember_oauth_state(
     state: str | None,
     code_verifier: str | None,
     link_user_id: int | None = None,
     redirect_uri: str | None = None,
     client_mode: str | None = None,
+    *,
+    flow: Literal["pkce", "confidential"] | None = None,
 ) -> None:
     if not state or not code_verifier:
         return
-    _client_id, _client_secret, default_redirect = _google_env()
+    _client_id, default_redirect = _google_public_env()
+    effective_flow = flow or _google_flow_mode()
     with _pending_pkce_lock:
+        _prune_pending_google_oauth()
         _pending_google_oauth[state] = {
             "verifier": code_verifier,
             "link_user_id": int(link_user_id) if link_user_id else None,
             "redirect_uri": (redirect_uri or default_redirect).strip(),
             "client_mode": (client_mode or "").strip() or None,
+            "flow": effective_flow,
+            "created_at": time.time(),
         }
-        if len(_pending_google_oauth) > _MAX_PENDING_PKCE:
-            for key in list(_pending_google_oauth.keys())[:-_MAX_PENDING_PKCE]:
-                _pending_google_oauth.pop(key, None)
 
 
 def _take_oauth_state(state: str | None) -> dict[str, Any] | None:
@@ -208,12 +351,47 @@ def _take_oauth_state(state: str | None) -> dict[str, Any] | None:
         return _pending_google_oauth.pop(state, None)
 
 
-def _build_flow(redirect_uri: str | None = None) -> Flow:
-    _client_id, _client_secret, default_redirect = _google_env()
+def _peek_google_oauth_pending(state: str | None) -> dict[str, Any] | None:
+    if not state:
+        return None
+    with _pending_pkce_lock:
+        raw = _pending_google_oauth.get(state)
+        return dict(raw) if isinstance(raw, dict) else None
+
+
+def peek_google_oauth_client_mode(state: str | None) -> str | None:
+    raw = _peek_google_oauth_pending(state)
+    if not raw:
+        return None
+    client_mode = raw.get("client_mode")
+    return str(client_mode).strip() if client_mode else None
+
+
+def discard_google_oauth_state(state: str | None) -> None:
+    """Drop pending OAuth attempt; stored cloud_tokens unchanged."""
+    _take_oauth_state(state)
+
+
+def _build_confidential_flow(redirect_uri: str | None = None) -> Flow:
+    _client_id, _client_secret, default_redirect = _google_confidential_env()
     effective = (redirect_uri or default_redirect).strip()
     flow = Flow.from_client_config(_client_config(effective), scopes=SCOPES)
     flow.redirect_uri = effective
     return flow
+
+
+def _build_pkce_flow(redirect_uri: str | None = None) -> Flow:
+    _client_id, default_redirect = _google_public_env()
+    effective = (redirect_uri or default_redirect).strip()
+    flow = Flow.from_client_config(_pkce_client_config(effective), scopes=SCOPES)
+    flow.redirect_uri = effective
+    return flow
+
+
+def _build_flow(redirect_uri: str | None = None) -> Flow:
+    if _google_flow_mode() == "confidential":
+        return _build_confidential_flow(redirect_uri)
+    return _build_pkce_flow(redirect_uri)
 
 
 def _credentials_from_row(
@@ -221,11 +399,15 @@ def _credentials_from_row(
     refresh_token: str | None,
     expires_at: str | None,
 ) -> Credentials:
-    client_id, client_secret, _redirect = _google_env()
+    flow_mode = _google_flow_mode()
+    client_id, default_redirect = _google_public_env()
+    client_secret: str | None = None
+    if flow_mode == "confidential":
+        client_id, client_secret, _redirect = _google_confidential_env()
     creds = Credentials(
         token=access_token,
         refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
+        token_uri=_GOOGLE_TOKEN_URI,
         client_id=client_id,
         client_secret=client_secret,
         scopes=SCOPES,
@@ -245,7 +427,17 @@ def _get_credentials_sync(user_id: int | None = None) -> Credentials | None:
 
     if creds.expired and creds.refresh_token:
         logger.info("Токен Google Drive истёк, обновляем…")
-        creds.refresh(Request())
+        if _google_flow_mode() == "pkce":
+            client_id, _redirect = _google_public_env()
+            payload = _refresh_google_token_pkce(client_id, creds.refresh_token)
+            creds = _credentials_from_token_payload(
+                payload,
+                client_id=client_id,
+                client_secret=None,
+                refresh_token=creds.refresh_token,
+            )
+        else:
+            creds.refresh(Request())
         new_refresh = creds.refresh_token or refresh_token
         _save_tokens_sync(
             creds.token,
@@ -382,8 +574,14 @@ class GoogleDriveService:
         client_mode: str | None = None,
     ) -> str:
         def _auth_url() -> str:
-            ru = (redirect_uri or _google_env()[2]).strip()
-            flow = _build_flow(ru)
+            flow_mode = _google_flow_mode()
+            _client_id, default_redirect = _google_public_env()
+            ru = (redirect_uri or default_redirect).strip()
+            flow = (
+                _build_confidential_flow(ru)
+                if flow_mode == "confidential"
+                else _build_pkce_flow(ru)
+            )
             url, state = flow.authorization_url(
                 access_type="offline",
                 include_granted_scopes="true",
@@ -395,6 +593,7 @@ class GoogleDriveService:
                 link_user_id,
                 ru,
                 client_mode=client_mode,
+                flow=flow_mode,
             )
             return url
 
@@ -410,12 +609,35 @@ class GoogleDriveService:
     ) -> dict[str, Any]:
         def _exchange() -> dict[str, Any]:
             pending = _take_oauth_state(state)
-            ru = (pending.get("redirect_uri") if pending else None) or _google_env()[2]
-            flow = _build_flow(ru)
-            if pending and pending.get("verifier"):
-                flow.code_verifier = pending["verifier"]
-            flow.fetch_token(code=code)
-            creds = flow.credentials
+            flow_mode: Literal["pkce", "confidential"] = (
+                pending.get("flow") if pending else None
+            ) or _google_flow_mode()
+            _client_id, default_redirect = _google_public_env()
+            ru = (pending.get("redirect_uri") if pending else None) or default_redirect
+            verifier = (pending or {}).get("verifier")
+            if flow_mode == "pkce":
+                if not verifier:
+                    raise RuntimeError(
+                        "PKCE code_verifier не найден (истёкший или повторный callback). "
+                        "Начните вход заново."
+                    )
+                payload = _exchange_google_code_pkce(
+                    code,
+                    client_id=_client_id,
+                    redirect_uri=ru,
+                    code_verifier=str(verifier),
+                )
+                creds = _credentials_from_token_payload(
+                    payload,
+                    client_id=_client_id,
+                    client_secret=None,
+                )
+            else:
+                flow = _build_confidential_flow(ru)
+                if verifier:
+                    flow.code_verifier = verifier
+                flow.fetch_token(code=code)
+                creds = flow.credentials
             if not creds or not creds.token:
                 raise RuntimeError("Google OAuth не вернул access_token")
             if persist:
@@ -434,6 +656,8 @@ class GoogleDriveService:
                 "credentials": creds,
                 "link_user_id": pending.get("link_user_id") if pending else None,
                 "client_mode": pending.get("client_mode") if pending else None,
+                "redirect_uri": ru,
+                "flow": flow_mode,
             }
 
         return await asyncio.to_thread(_exchange)

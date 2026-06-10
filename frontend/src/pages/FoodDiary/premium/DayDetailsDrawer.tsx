@@ -4,6 +4,7 @@ import type { FoodPhase, FoodProduct } from "../../../api/food";
 import { Button } from "../../../components/ui/button";
 import { formatDateRu } from "../../../utils/format";
 import { DayModalContent } from "../DayModalContent";
+import "../food-diary-layout.css";
 
 export function DayDetailsDrawer({
   date,
@@ -46,7 +47,7 @@ export function DayDetailsDrawer({
           animate={{ x: 0 }}
           exit={{ x: "100%" }}
           transition={{ type: "spring", damping: 28, stiffness: 320 }}
-          className="relative flex h-full w-full max-w-xl flex-col border-l border-white/20 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95 day-details-drawer"
+          className="relative flex h-full flex-col border-l border-white/20 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95 day-details-drawer"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4 dark:border-slate-800">

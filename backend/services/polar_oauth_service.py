@@ -188,9 +188,10 @@ def build_polar_oauth_debug(
     from backend.services.oauth_redirect import mask_client_id
 
     return {
-        "configured": bool(client_id),
+        "configured": bool(client_id and client_secret),
         "client_id_present": bool(client_id),
         "client_secret_present": bool(client_secret),
+        "setup_required": bool(client_id) and not bool(client_secret),
         "client_id_preview": mask_client_id(client_id) if client_id else None,
         "callback_path": POLAR_CALLBACK_PATH,
         "redirect_uri": resolution.redirect_uri or None,

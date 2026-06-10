@@ -2,7 +2,7 @@
 
 Backlog Forma после Desktop RC и текущего цикла mobile/Health Connect planning. Статус — по коду, [KNOWN_ISSUES.md](./KNOWN_ISSUES.md), [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md).
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -15,6 +15,7 @@ Last updated: **2026-06-05**.
 5. Bug fixing and cleanup.
 6. Automatic calorie calibration.
 7. Future analytics expansion.
+8. Documentation debt cleanup after major release/prep passes.
 
 ---
 
@@ -24,9 +25,10 @@ Last updated: **2026-06-05**.
 |----------|------|--------|--------|
 | P0 | Body measurements chart/history edit crash | Open | Measurements editable from chart/history without app crash |
 | P1 | Exercise template creation loses block structure | Open | Preserve block order, names, exercise assignments and generated workout structure |
-| P1 | Goal deficit validation rejects >60 kcal/kg fat | Open | Allow values up to 70; reject >70 with friendly validation, not HTTP 422 within range |
+| P1 | Goal deficit validation rejects >60 kcal/kg fat | Done | Limit unified at 70 kcal/kg fat across UI and API |
 | P1 | Health Connect validation | Open | Sleep, HR, steps and kcal verified across mobile local, FormaSync and desktop views |
 | P1 | Synchronization validation | Open | Multi-device FormaSync roundtrip, conflict visibility, HC day rollups |
+| P2 | Documentation drift guard | Open | Keep docs schema/OAuth/packaging sections checked whenever migrations or release scripts change |
 
 Details and workarounds: [KNOWN_ISSUES.md](./KNOWN_ISSUES.md). Release gates: [RELEASE_READINESS.md](./RELEASE_READINESS.md).
 
@@ -108,6 +110,36 @@ Details: [ANALYTICS.md](./ANALYTICS.md), [NUTRITION.md](./NUTRITION.md), [ARCHIT
 | Readiness | HRV/SpO2/stress only after stable ingest exists |
 | Recovery-Aware Analytics Layer | P2 planned; interpret ATL/CTL/TSB with sleep, HR, steps, energy balance and body trend without mutating raw training load |
 | Metric Explainability & Transparency | P2 planned; "Why?" explanations, contributor breakdowns, positive/negative drivers and trend rationale for advanced metrics |
+| Route point telemetry phase 1 | **Done (2026-06-09)** — per-point popup fields via `RoutePointTelemetry` |
+| Route point telemetry phase 2 | P2 planned — map ↔ chart sync, replay scrubbing |
+
+### Route Point Telemetry & Map Inspection
+
+Priority: **P2 / Usability & Analytics Enhancement**.
+
+**Phase 1 — Done (2026-06-09):** Per-point map popups show available telemetry (HR, speed, pace, elevation, power, cadence, temperature, distance, elapsed time) via `RoutePointTelemetry` and backend merge. See [CHANGELOG.md](./CHANGELOG.md).
+
+**Phase 2 — Planned:** Map ↔ chart synchronization and replay scrubbing.
+
+**Phase 2 proposed behavior:** When a route point is selected, also highlight the corresponding chart position and support synchronized scrubbing:
+
+- show only metrics present for the activity/source;
+- hide missing or unsupported fields;
+- avoid empty placeholders;
+- support provider-specific fields where stored.
+
+Candidate metrics: time, elapsed time, distance from start, speed, pace (running), heart rate, cadence, elevation, grade/slope, power, temperature, and other source-specific values.
+
+**UX goal:** A map click should answer “how fast was I here?”, “what was my pace/HR/cadence/elevation at this moment?” without switching screens.
+
+**Future-compatible architecture (not in initial scope):**
+
+- map point selection highlights the corresponding position on speed, HR, elevation and power charts;
+- chart point selection highlights the route location on the map;
+- synchronized cursor between map and charts;
+- advanced route replay with linked telemetry visualization.
+
+**Data references:** GeoJSON point properties (`elapsed_sec`, `speed_kmh`, `cadence`, `elevation_m`, `heart_rate`, `distance_m`, `temperature_c`, …), `GET /api/cardio/{id}/points`, `GET /api/cardio/{id}/sensors`. See [archive/BIKE.md](./archive/BIKE.md) for current map/chart stack.
 
 ### Recovery-Aware Analytics Layer
 
@@ -136,6 +168,15 @@ Desktop is largely feature-complete compared to mobile. Keep work narrow:
 - Consider `electron-updater` later; manual reinstall remains current.
 - Code cleanup after P0/P1 bugs, HC validation and sync validation.
 
+### Documentation / release hygiene
+
+- Keep public docs at `SCHEMA_VERSION=80` until migrations actually change.
+- When dev repo migration numbering differs, document the difference instead of copying version numbers.
+- Migration reconciliation follow-up: Dev should append a reconciliation migration for Public v078 cardio duration/distance and meal-table bootstrap hardening before claiming schema equivalence; future shared migrations should continue from v081+ after that point.
+- Keep OAuth docs synchronized with PKCE code paths and Yandex scope mode (`disk` vs `app_folder`).
+- Keep packaging docs synchronized with `desktop:prepare-seed`, `desktop:check-secrets`, `backend.spec`, and public `shared.db` audit scripts.
+- Add/update documentation sync reports after Dev/Public reconciliation passes.
+
 ---
 
 ## Уже сделано (2026-05 — 2026-06)
@@ -153,5 +194,7 @@ Desktop is largely feature-complete compared to mobile. Keep work narrow:
 - Nutrition docs restored as active RC source of truth; meal plans v070 in `workouts.db`
 - Adaptive calorie calibration foundation: observed vs predicted deficit, history table, raw calorie preservation
 - Polar HR sample parser: content-based HR detection, `sample-type: 0`, unknown HR-like samples
+- PKCE desktop OAuth, packaging secret checks, clean-install seed generation and public shared DB audit flow
+- `units_system` profile preference (`metric` / `american`) with metric/SI storage and UI-boundary conversion
 
 Архив планов: [archive/](./archive/).

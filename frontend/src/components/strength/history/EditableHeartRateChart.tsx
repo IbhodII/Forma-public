@@ -55,7 +55,22 @@ export function EditableHeartRateChart({
   const refreshMapping = useCallback(() => {
     if (!graphDivRef.current) return;
     const mapping = getPlotAxisMapping(graphDivRef.current, timeAxisSeconds);
-    if (mapping) setAxisMapping(mapping);
+    if (!mapping) return;
+    setAxisMapping((prev) => {
+      if (
+        prev &&
+        prev.xMin === mapping.xMin &&
+        prev.xMax === mapping.xMax &&
+        prev.plotLeft === mapping.plotLeft &&
+        prev.plotWidth === mapping.plotWidth &&
+        prev.plotTop === mapping.plotTop &&
+        prev.plotHeight === mapping.plotHeight &&
+        prev.timeAxisSeconds === mapping.timeAxisSeconds
+      ) {
+        return prev;
+      }
+      return mapping;
+    });
   }, [timeAxisSeconds]);
 
   const handlePlotReady: PlotParams["onInitialized"] = useCallback(
@@ -146,7 +161,7 @@ export function EditableHeartRateChart({
     }
 
     const hit = findBlockAtSec(blocks, sec);
-    if (hit) onSelectBlock(hit.block_id);
+    if (hit && Number.isFinite(hit.block_id)) onSelectBlock(hit.block_id);
     else onClearSelection();
   };
 
@@ -194,13 +209,16 @@ export function EditableHeartRateChart({
           onMouseLeave={() => setSplitPreviewSec(null)}
           role="presentation"
         >
-          {blocks.map((b) => {
+          {blocks.map((b, idx) => {
+            if (!Number.isFinite(b.start_sec) || !Number.isFinite(b.end_sec) || b.end_sec <= b.start_sec) {
+              return null;
+            }
             const left = secToPx(b.start_sec, axisMapping);
             const right = secToPx(b.end_sec, axisMapping);
             const width = Math.max(0, right - left);
             const isSelected = b.block_id === selectedBlockId;
             return (
-              <div key={b.block_id}>
+              <div key={`${b.block_id}-${idx}`}>
                 <div
                   className={cn(
                     "absolute cursor-pointer",

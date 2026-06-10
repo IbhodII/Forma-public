@@ -7,48 +7,31 @@ import { Loader } from "../../components/Loader";
 import { useToast } from "../../components/Toast";
 import { queryKeys } from "../../hooks/queryKeys";
 import { useWeekStartDay } from "../../hooks/useWeekStartDay";
-import { weekStartForDate } from "../../shared/utils/weekCalendar";
+import { weekDatesFromAnchor, weekStartForDate } from "../../shared/utils/weekCalendar";
+import { formatDateRu, todayIso } from "../../utils/format";
 import { parseApiError } from "../../utils/validation";
-
-const WEEKDAY_LABELS = [
-  "Понедельник",
-  "Вторник",
-  "Среда",
-  "Четверг",
-  "Пятница",
-  "Суббота",
-  "Воскресенье",
-] as const;
+import {
+  mealPlanApplyRange,
+  pythonWeekday,
+  weekdayLabel,
+  weekdayOrderFromStart,
+} from "./mealPlanApplyUtils";
 
 type DayDraft = { day_of_week: number; meal_plan_id: number | "" };
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function mondayBasedDow(iso: string): number {
-  const js = new Date(`${iso}T12:00:00`).getDay();
-  return js === 0 ? 6 : js - 1;
-}
-
-function dateForScheduleDow(weekAnchor: string, dow: number): string {
-  const start = new Date(`${weekAnchor}T12:00:00`);
-  for (let i = 0; i < 7; i += 1) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
-    if (mondayBasedDow(iso) === dow) return iso;
-  }
-  const fallback = new Date(`${weekAnchor}T12:00:00`);
-  fallback.setDate(fallback.getDate() + dow);
-  return fallback.toISOString().slice(0, 10);
-}
-
 function draftFromSchedule(items: WeeklyScheduleItem[]): DayDraft[] {
-  return WEEKDAY_LABELS.map((_, dow) => {
+  return Array.from({ length: 7 }, (_, dow) => {
     const row = items.find((d) => d.day_of_week === dow);
     return { day_of_week: dow, meal_plan_id: row?.meal_plan_id ?? "" };
   });
+}
+
+function dateForScheduleDow(weekAnchor: string, targetDow: number, weekStartDay: number): string {
+  const dates = weekDatesFromAnchor(weekAnchor, weekStartDay);
+  for (const iso of dates) {
+    if (pythonWeekday(iso) === targetDow) return iso;
+  }
+  return dates[0] ?? weekAnchor;
 }
 
 export function WeeklyScheduleTab() {
@@ -58,6 +41,7 @@ export function WeeklyScheduleTab() {
   const [draft, setDraft] = useState<DayDraft[] | null>(null);
   const [weekStart, setWeekStart] = useState(() => weekStartForDate(todayIso(), weekStartDay));
   const [applyConfirm, setApplyConfirm] = useState(false);
+  const [replaceExisting, setReplaceExisting] = useState(false);
 
   useEffect(() => {
     setWeekStart(weekStartForDate(todayIso(), weekStartDay));
@@ -90,6 +74,27 @@ export function WeeklyScheduleTab() {
     return { cut, bulk };
   }, [plans]);
 
+  const weekRange = useMemo(() => mealPlanApplyRange(weekStart, true), [weekStart]);
+
+  const applyTargets = useMemo(() => {
+    const rows = draft ?? draftFromSchedule(schedule);
+    const targets: { dow: number; date: string; planId: number; planName: string; phase: FoodPhase }[] =
+      [];
+    for (const row of rows) {
+      if (row.meal_plan_id === "") continue;
+      const plan = plans.find((p) => p.id === row.meal_plan_id);
+      if (!plan) continue;
+      targets.push({
+        dow: row.day_of_week,
+        date: dateForScheduleDow(weekStart, row.day_of_week, weekStartDay),
+        planId: Number(row.meal_plan_id),
+        planName: plan.name,
+        phase: plan.phase as FoodPhase,
+      });
+    }
+    return targets;
+  }, [draft, schedule, plans, weekStart, weekStartDay]);
+
   const saveMut = useMutation({
     mutationFn: () =>
       foodApi.saveWeeklySchedule({
@@ -107,28 +112,23 @@ export function WeeklyScheduleTab() {
 
   const applyMut = useMutation({
     mutationFn: async () => {
-      const rows = draft ?? [];
       let total = 0;
       const errors: string[] = [];
       let appliedDays = 0;
 
-      for (const row of rows) {
-        if (row.meal_plan_id === "") continue;
-        const plan = plans.find((p) => p.id === row.meal_plan_id);
-        if (!plan) continue;
-        const targetDate = dateForScheduleDow(weekStart, row.day_of_week);
+      for (const target of applyTargets) {
         try {
           const res = await foodApi.applyMealPlan({
-            plan_id: Number(row.meal_plan_id),
-            date: targetDate,
-            phase: plan.phase as FoodPhase,
+            plan_id: target.planId,
+            date: target.date,
+            phase: target.phase,
             apply_week: false,
-            replace_existing: true,
+            replace_existing: replaceExisting,
           });
           total += res.total_added;
           appliedDays += 1;
         } catch (e) {
-          errors.push(`${WEEKDAY_LABELS[row.day_of_week]}: ${parseApiError(e)}`);
+          errors.push(`${weekdayLabel(target.dow)}: ${parseApiError(e)}`);
         }
       }
 
@@ -146,6 +146,7 @@ export function WeeklyScheduleTab() {
         showToast(`Добавлено позиций: ${total}`, "success");
       }
       setApplyConfirm(false);
+      setReplaceExisting(false);
     },
     onError: (e) => {
       showToast(parseApiError(e), "error");
@@ -166,14 +167,24 @@ export function WeeklyScheduleTab() {
   }
 
   const rows = draft ?? draftFromSchedule(schedule);
-  const weekEnd = dateForScheduleDow(weekStart, 6);
+  const orderedDows = weekdayOrderFromStart(weekStartDay);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-[rgb(var(--app-text-muted))]">
-        Назначьте рацион на каждый день недели (пн–вс). Применение заполнит дневник с{" "}
-        <span className="tabular-nums font-medium text-[rgb(var(--app-text))]">{weekStart}</span> по{" "}
-        <span className="tabular-nums font-medium text-[rgb(var(--app-text))]">{weekEnd}</span>.
+        Назначьте рацион на каждый день недели (от{" "}
+        <span className="font-medium text-[rgb(var(--app-text))]">
+          {weekdayLabel(weekStartDay).toLowerCase()}
+        </span>
+        ). Применение заполнит дневник с{" "}
+        <span className="tabular-nums font-medium text-[rgb(var(--app-text))]">
+          {formatDateRu(weekRange.start)}
+        </span>{" "}
+        по{" "}
+        <span className="tabular-nums font-medium text-[rgb(var(--app-text))]">
+          {formatDateRu(weekRange.end)}
+        </span>
+        .
       </p>
 
       <label className="text-sm block max-w-xs">
@@ -187,41 +198,51 @@ export function WeeklyScheduleTab() {
       </label>
 
       <div className="space-y-3">
-        {rows.map((row) => (
-          <div key={row.day_of_week} className="flex flex-wrap items-center gap-2">
-            <span className="text-sm w-28 shrink-0">{WEEKDAY_LABELS[row.day_of_week]}</span>
-            <select
-              className="input-field flex-1 min-w-[12rem]"
-              value={row.meal_plan_id === "" ? "" : String(row.meal_plan_id)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setDraft((prev) =>
-                  (prev ?? rows).map((d) =>
-                    d.day_of_week === row.day_of_week
-                      ? { ...d, meal_plan_id: v === "" ? "" : Number(v) }
-                      : d,
-                  ),
-                );
-              }}
-            >
-              <option value="">— не назначен —</option>
-              <optgroup label="Сушка">
-                {plansByPhase.cut.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Набор">
-                {plansByPhase.bulk.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-        ))}
+        {orderedDows.map((dow) => {
+          const row = rows.find((r) => r.day_of_week === dow);
+          if (!row) return null;
+          const targetDate = dateForScheduleDow(weekStart, dow, weekStartDay);
+          return (
+            <div key={row.day_of_week} className="flex flex-wrap items-center gap-2">
+              <span className="text-sm w-32 shrink-0">
+                {weekdayLabel(dow)}
+                <span className="block text-[10px] text-[rgb(var(--app-text-muted))] tabular-nums">
+                  {formatDateRu(targetDate)}
+                </span>
+              </span>
+              <select
+                className="input-field flex-1 min-w-[12rem]"
+                value={row.meal_plan_id === "" ? "" : String(row.meal_plan_id)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDraft((prev) =>
+                    (prev ?? rows).map((d) =>
+                      d.day_of_week === row.day_of_week
+                        ? { ...d, meal_plan_id: v === "" ? "" : Number(v) }
+                        : d,
+                    ),
+                  );
+                }}
+              >
+                <option value="">— не назначен —</option>
+                <optgroup label="Сушка">
+                  {plansByPhase.cut.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Набор">
+                  {plansByPhase.bulk.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -236,7 +257,7 @@ export function WeeklyScheduleTab() {
         <button
           type="button"
           className="btn-secondary"
-          disabled={applyMut.isPending}
+          disabled={applyMut.isPending || applyTargets.length === 0}
           onClick={() => setApplyConfirm(true)}
         >
           Применить на неделю
@@ -246,10 +267,44 @@ export function WeeklyScheduleTab() {
       <ConfirmModal
         open={applyConfirm}
         title="Применить расписание?"
-        message="Заменить записи в дневнике за выбранную неделю по расписанию?"
-        confirmLabel="Применить"
+        message={
+          <div className="space-y-3 text-sm">
+            <p>
+              Период:{" "}
+              <span className="font-medium tabular-nums">
+                {formatDateRu(weekRange.start)} — {formatDateRu(weekRange.end)}
+              </span>
+            </p>
+            <ul className="text-xs text-[rgb(var(--app-text-muted))] space-y-1 max-h-40 overflow-y-auto">
+              {applyTargets.map((t) => (
+                <li key={`${t.dow}-${t.planId}`}>
+                  {weekdayLabel(t.dow)} ({formatDateRu(t.date)}): {t.planName}
+                </li>
+              ))}
+            </ul>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={replaceExisting}
+                onChange={(e) => setReplaceExisting(e.target.checked)}
+              />
+              <span>
+                Заменить существующие записи в затронутые дни
+                <span className="block text-xs text-[rgb(var(--app-text-muted))] mt-0.5">
+                  По умолчанию записи из рациона добавляются к уже введённым вручную; дубликаты не
+                  создаются.
+                </span>
+              </span>
+            </label>
+          </div>
+        }
+        confirmLabel={replaceExisting ? "Заменить и применить" : "Добавить к дневнику"}
         loading={applyMut.isPending}
-        onCancel={() => setApplyConfirm(false)}
+        onCancel={() => {
+          setApplyConfirm(false);
+          setReplaceExisting(false);
+        }}
         onConfirm={() => applyMut.mutate()}
       />
     </div>

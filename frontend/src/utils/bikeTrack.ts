@@ -1,10 +1,12 @@
 import {
   resolveSpeedColorProfile,
   speedToColor,
-  type CyclingWorkoutProfile,
+  type SpeedColorProfile,
 } from "../config/speedColorScale";
 
-export type { CyclingWorkoutProfile };
+export type { SpeedColorProfile };
+/** @deprecated use SpeedColorProfile */
+export type CyclingWorkoutProfile = SpeedColorProfile;
 
 export interface TrackPoint {
   lat: number;
@@ -16,6 +18,7 @@ export interface TrackPoint {
   temperatureC?: number | null;
   heartRate?: number | null;
   distanceM?: number | null;
+  powerWatts?: number | null;
 }
 
 export interface ParsedTrack {
@@ -104,10 +107,32 @@ export function parseTrackGeojson(geo: Record<string, unknown>): ParsedTrack {
       temperatureC: numAt(props.temperature_c, i),
       heartRate: numAt(props.heart_rate, i) != null ? Math.round(numAt(props.heart_rate, i)!) : null,
       distanceM: numAt(props.distance_m, i),
+      powerWatts: numAt(props.power_watts, i),
     });
   }
 
   return { points, startTime: (props.start_time as string) ?? null };
+}
+
+/** Fill missing speed from GPS segments; idempotent when telemetry already present. */
+export function enrichTrackPoints(points: TrackPoint[]): TrackPoint[] {
+  if (points.length < 2) return points;
+  const out = points.map((p) => ({ ...p }));
+  for (let i = 0; i < out.length; i += 1) {
+    const point = out[i];
+    if (point.speedKmh != null && point.speedKmh > 0) continue;
+    for (const neighbor of [i + 1, i - 1]) {
+      if (neighbor < 0 || neighbor >= out.length) continue;
+      const a = out[Math.min(i, neighbor)];
+      const b = out[Math.max(i, neighbor)];
+      const spd = segmentSpeedKmh(a, b);
+      if (spd > 0) {
+        point.speedKmh = spd;
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 export function formatElapsed(sec: number): string {
@@ -180,7 +205,7 @@ function mergeAdjacentSegments(segments: SpeedSegment[]): SpeedSegment[] {
  */
 export function buildSpeedSegments(
   points: TrackPoint[],
-  options?: { mergeColors?: boolean; speedProfile?: CyclingWorkoutProfile; workoutType?: string | null },
+  options?: { mergeColors?: boolean; speedProfile?: SpeedColorProfile; workoutType?: string | null },
 ): SpeedSegment[] {
   if (points.length < 2) return [];
 

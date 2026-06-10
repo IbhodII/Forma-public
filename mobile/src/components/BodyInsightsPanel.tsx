@@ -5,6 +5,7 @@ import React, {useMemo} from 'react';
 import type {BodyMetricRow} from '../types/body';
 
 import {AppCard, AppText} from '../design-system';
+import {formatBodyMetricSigned, formatBodyMetricValue} from '../utils/bodyMetrics';
 
 
 
@@ -54,7 +55,7 @@ export function BodyInsightsPanel({latest, history}: Props) {
 
     const index = bmi(Number(latest.weight_kg));
 
-    return `Вес ${latest.weight_kg} кг · ИМТ ${index.toFixed(1)} · изменение за период ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} кг`;
+    return `Вес ${formatBodyMetricValue(latest.weight_kg, ' кг')} · ИМТ ${index.toFixed(1)} · изменение за период ${formatBodyMetricSigned(delta)} кг`;
 
   }, [latest, history]);
 

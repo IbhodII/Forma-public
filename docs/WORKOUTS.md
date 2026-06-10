@@ -2,7 +2,7 @@
 
 Desktop RC source of truth for workouts, strength templates, supersets, circuits, workout history, Polar attach, and the exercise catalog.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -157,17 +157,46 @@ Polar/FIT ingestion remains desktop/backend scope. Mobile standalone completion 
 
 ## Exercise Catalog Hygiene
 
-Catalog table: `all_exercises`.
+Strength and stretching use **separate catalogs** with an authoritative `exercise_category` field (`strength` | `stretching`).
+
+| Library | Tables | API |
+|---------|--------|-----|
+| Strength | **`shared.strength_exercises`** (canonical, v080); `user_strength_exercises` legacy overlay for archive/orphans | `/api/strength/exercises*` |
+| Stretching | `shared.stretching_exercises` | `/api/stretching/exercises*` |
+
+Migration **v080** populates `shared.strength_exercises` from deduplicated workout history (~50 canonical names). New catalog writes go to shared; workout rows (`strength_workouts`) unchanged. Legacy `all_exercises` is schema-only.
+
+**Context-aware search (enforced in queries, not UI-only):**
+
+- Strength workout builder, templates, recording, and autocomplete return only `exercise_category = strength`.
+- Stretching library, presets, and session flows return only `exercise_category = stretching`.
+
+Migration **v077** backfills categories, removes unreferenced free-exercise-db bulk import from the strength shared catalog, and keeps referenced names even when English. Stretching imports (`scripts/import_free_exercise_db.py`, seed helpers) always tag `exercise_category = stretching`.
 
 Current behavior:
 
-- `GET /api/strength/exercises` returns active names for autocomplete/search.
-- `GET /api/strength/exercises/catalog` returns editable catalog rows.
+- `GET /api/strength/exercises` returns active **strength** names for autocomplete/search.
+- `GET /api/strength/exercises/catalog` returns editable strength catalog rows.
 - `PUT /api/strength/exercises/{id}` updates the catalog row only; it does not rewrite workout history.
 - `DELETE /api/strength/exercises/{id}` physically deletes unused rows; used rows are archived (`is_archived=1`) so history remains intact.
 - Empty or broken names display as `Без названия` in management UI.
 
 Deleting an exercise from a specific template set is separate from catalog deletion: it removes the row from the current `WorkoutBlock[]` and is saved with the exercise set.
+
+---
+
+## Cardio Route Visualization (Desktop)
+
+Cardio workouts with GPS (cycling, running, etc.) render on `/workouts` via `CardioWorkoutPanel` → `BikeGpsMap` + `BikeWorkoutCharts`.
+
+| Capability | Current behavior |
+|------------|------------------|
+| Route display | Leaflet map; segments colorized by speed (pace for running where configured) |
+| Stored telemetry | Per-point fields in GeoJSON / `workout_sensors` / `workout_heart_rate` (source-dependent): speed, HR, cadence, elevation, temperature, distance, elapsed time, power when present |
+| Charts | Speed/pace, cadence, elevation, temperature, HR; chart click can focus map position |
+| Point selection | Hover/click popup shows time, pace/speed, distance, HR, elevation, cadence, power, temperature when present for that point (`RoutePointTelemetry`) |
+
+**Planned (P2):** Route Point Telemetry & Map Inspection — display all available metrics for the selected point; later, synchronized map ↔ chart cursor and replay. Details: [ROADMAP.md](./ROADMAP.md). Technical reference (FIT/GPS pipeline, API): [archive/BIKE.md](./archive/BIKE.md).
 
 ---
 

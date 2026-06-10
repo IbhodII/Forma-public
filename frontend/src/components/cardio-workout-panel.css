@@ -1,0 +1,31 @@
+/* Cardio activity analytics — prioritize chart height in detail cards */
+
+.cardio-analytics-chart-panel {
+  width: 100%;
+  min-width: 0;
+}
+
+.cardio-analytics-chart-panel .hr-chart-plot {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .cardio-analytics-chart-panel {
+    min-height: clamp(18rem, 38vh, 28rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .cardio-analytics-chart-panel {
+    min-height: clamp(20rem, 42vh, 30rem);
+  }
+}
+
+/* Room for future stacked cardio metric charts below HR */
+.cardio-analytics-charts-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}

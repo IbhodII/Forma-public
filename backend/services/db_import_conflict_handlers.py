@@ -1071,9 +1071,11 @@ def _merge_meal_templates_from_staging(
     import_uid: int,
     import_schema: str = "import_shared",
 ) -> StatsDict:
+    from database.meal_plans_storage import meal_plan_schema
+
     stats = empty_stats()
     table = "meal_templates"
-    dest_schema = "shared"
+    dest_schema = meal_plan_schema(conn)
     if not _table_exists(conn, dest_schema, table) or not _table_exists(conn, import_schema, table):
         return stats
 

@@ -26,7 +26,7 @@
 ## Установка зависимостей
 
 ```powershell
-cd C:\Users\brett\Desktop\MyHealthDashboard
+cd C:\path\to\MyHealthDashboard
 .\venv\Scripts\pip install -r requirements.txt
 ```
 

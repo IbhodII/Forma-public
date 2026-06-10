@@ -139,3 +139,44 @@ def test_google_build_flow_uses_effective_redirect(monkeypatch):
 
     flow = _build_flow("http://127.0.0.1:8002/api/cloud/callback/google")
     assert flow.redirect_uri == "http://127.0.0.1:8002/api/cloud/callback/google"
+
+
+def test_google_pkce_connectable_without_secret(monkeypatch):
+    monkeypatch.setattr(oauth_redirect, "_load_env", lambda: None)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-cid")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://127.0.0.1:8002/api/cloud/callback/google",
+    )
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_FLOW", raising=False)
+    monkeypatch.setattr("backend.core.env.load_project_env", lambda: None)
+    status = oauth_redirect._provider_env_status("google")
+    assert status["client_id_present"] is True
+    assert status["client_secret_present"] is False
+    assert status["configured"] is True
+    assert status["setup_required"] is False
+    assert status["oauth_flow_mode"] == "pkce"
+    assert status["secret_required"] is False
+    assert status["pkce_available"] is True
+
+
+def test_google_debug_snapshot_pkce_warning(monkeypatch):
+    monkeypatch.setattr(oauth_redirect, "_load_env", lambda: None)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id-abcdef")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://127.0.0.1:8002/api/cloud/callback/google",
+    )
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_FLOW", raising=False)
+    monkeypatch.setattr("backend.core.env.load_project_env", lambda: None)
+
+    snapshot = oauth_redirect.build_oauth_debug_snapshot(
+        request_base="http://127.0.0.1:8002",
+    )
+    assert snapshot["google"]["oauth_flow_mode"] == "pkce"
+    assert snapshot["google"]["pkce_available"] is True
+    assert snapshot["google"]["secret_required"] is False
+    assert any("PKCE" in w for w in snapshot["warnings"])
+    assert not any("GOOGLE_CLIENT_SECRET не задан" in w for w in snapshot["warnings"])

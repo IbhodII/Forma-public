@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { ModalShell } from "./ui/modal";
 import { cn } from "../lib/utils";
 
 type ConfirmModalProps = {
   open: boolean;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
@@ -29,7 +30,6 @@ export function ConfirmModal({
       open={open}
       onClose={onCancel}
       title={title}
-      description={message}
       size="sm"
       footer={
         <>
@@ -47,7 +47,7 @@ export function ConfirmModal({
         </>
       }
     >
-      {null}
+      <div className="text-sm text-[rgb(var(--app-text-muted))] leading-relaxed">{message}</div>
     </ModalShell>
   );
 }

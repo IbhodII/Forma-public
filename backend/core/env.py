@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
+
+OAuthFlowMode = Literal["pkce", "confidential"]
+YandexOAuthFlowMode = OAuthFlowMode
+GoogleOAuthFlowMode = OAuthFlowMode
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 _ENV_LOADED = False
@@ -66,11 +71,98 @@ def load_project_env() -> Path | None:
     return env_path
 
 
-def yandex_oauth_configured() -> bool:
+def _env_nonempty(key: str) -> bool:
     load_project_env()
-    return bool(os.getenv("YANDEX_CLIENT_ID", "").strip())
+    return bool(os.getenv(key, "").strip())
+
+
+def yandex_oauth_configured() -> bool:
+    """Public OAuth client id present (safe to ship in desktop installer)."""
+    return _env_nonempty("YANDEX_CLIENT_ID")
 
 
 def google_oauth_configured() -> bool:
+    """Public OAuth client id present (safe to ship in desktop installer)."""
+    return _env_nonempty("GOOGLE_CLIENT_ID")
+
+
+def yandex_oauth_flow_mode() -> YandexOAuthFlowMode:
+    """Default pkce — YANDEX_CLIENT_SECRET is ignored unless flow is confidential."""
     load_project_env()
-    return bool(os.getenv("GOOGLE_CLIENT_ID", "").strip())
+    raw = os.getenv("YANDEX_OAUTH_FLOW", "").strip().lower()
+    if raw in ("confidential", "secret", "legacy"):
+        return "confidential"
+    return "pkce"
+
+
+def yandex_oauth_redirect_configured() -> bool:
+    load_project_env()
+    if os.getenv("YANDEX_REDIRECT_URI", "").strip():
+        return True
+    return bool(os.getenv("PUBLIC_API_BASE_URL", "").strip())
+
+
+def yandex_oauth_connectable() -> bool:
+    """Public desktop PKCE: client_id + resolvable redirect (no secret)."""
+    return yandex_oauth_configured() and yandex_oauth_redirect_configured()
+
+
+def yandex_oauth_ready() -> bool:
+    """Yandex sign-in can complete on this server."""
+    if yandex_oauth_flow_mode() == "confidential":
+        load_project_env()
+        return (
+            yandex_oauth_connectable()
+            and bool(os.getenv("YANDEX_CLIENT_SECRET", "").strip())
+        )
+    return yandex_oauth_connectable()
+
+
+def google_oauth_flow_mode() -> GoogleOAuthFlowMode:
+    """Default pkce — GOOGLE_CLIENT_SECRET is ignored unless flow is confidential."""
+    load_project_env()
+    raw = os.getenv("GOOGLE_OAUTH_FLOW", "").strip().lower()
+    if raw in ("confidential", "secret", "legacy"):
+        return "confidential"
+    return "pkce"
+
+
+def google_oauth_redirect_configured() -> bool:
+    load_project_env()
+    if os.getenv("GOOGLE_REDIRECT_URI", "").strip():
+        return True
+    return bool(os.getenv("PUBLIC_API_BASE_URL", "").strip())
+
+
+def google_oauth_connectable() -> bool:
+    """Public desktop PKCE: client_id + resolvable redirect (no secret)."""
+    return google_oauth_configured() and google_oauth_redirect_configured()
+
+
+def google_oauth_ready() -> bool:
+    """Google sign-in can complete on this server."""
+    if google_oauth_flow_mode() == "confidential":
+        load_project_env()
+        return (
+            google_oauth_connectable()
+            and bool(os.getenv("GOOGLE_CLIENT_SECRET", "").strip())
+        )
+    return google_oauth_connectable()
+
+
+def polar_oauth_configured() -> bool:
+    return _env_nonempty("POLAR_CLIENT_ID")
+
+
+def polar_oauth_ready() -> bool:
+    load_project_env()
+    return bool(os.getenv("POLAR_CLIENT_ID", "").strip()) and bool(
+        os.getenv("POLAR_CLIENT_SECRET", "").strip()
+    )
+
+
+def off_contribute_ready() -> bool:
+    load_project_env()
+    return bool(os.getenv("OFF_USER_ID", "").strip()) and bool(
+        os.getenv("OFF_PASSWORD", "").strip()
+    )

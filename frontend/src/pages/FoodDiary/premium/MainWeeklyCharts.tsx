@@ -20,12 +20,16 @@ export function MainWeeklyCharts({
   cells: WeekDayCell[];
   formatEnergy: (n: number) => string;
 }) {
+  const hasExpenditureForecast = cells.some((c) => c.expenditureIsForecast);
+
   const chartData = cells.map((c) => ({
     label: c.weekdayLabel.slice(0, 2),
     intake: c.intake,
-    expenditure: c.expenditure ?? 0,
+    expenditure: c.expenditureIsForecast ? 0 : (c.expenditure ?? 0),
+    expenditureForecast: c.expenditureIsForecast ? (c.expenditure ?? 0) : 0,
     balance: c.balance ?? 0,
     protein: c.protein,
+    isForecast: Boolean(c.expenditureIsForecast),
   }));
 
   const tooltipStyle = {
@@ -40,6 +44,7 @@ export function MainWeeklyCharts({
       <h2 className="analytics-label">Аналитика недели</h2>
 
       <div className="grid gap-2 lg:grid-cols-2 lg:items-stretch min-w-0 w-full">
+        <div className="space-y-1 min-w-0">
         <ChartContainer title="Потребление и расход" height="sm">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -52,6 +57,10 @@ export function MainWeeklyCharts({
                   <stop offset="0%" stopColor="#64748b" stopOpacity={0.2} />
                   <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
                 </linearGradient>
+                <linearGradient id="expForecastFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
@@ -60,7 +69,11 @@ export function MainWeeklyCharts({
                 contentStyle={tooltipStyle}
                 formatter={(v, name) => [
                   formatEnergy(Number(v) || 0),
-                  name === "intake" ? "Потребление" : "Расход",
+                  name === "intake"
+                    ? "Потребление"
+                    : name === "expenditureForecast"
+                      ? "Прогноз расхода"
+                      : "Расход",
                 ]}
               />
               <Area
@@ -73,6 +86,15 @@ export function MainWeeklyCharts({
               />
               <Area
                 type="monotone"
+                dataKey="expenditureForecast"
+                stroke="#8b5cf6"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                fill="url(#expForecastFill)"
+                name="expenditureForecast"
+              />
+              <Area
+                type="monotone"
                 dataKey="intake"
                 stroke="#f43f5e"
                 strokeWidth={2}
@@ -82,6 +104,12 @@ export function MainWeeklyCharts({
             </AreaChart>
           </ResponsiveContainer>
         </ChartContainer>
+        {hasExpenditureForecast ? (
+          <p className="text-[10px] text-violet-600/90 dark:text-violet-300/90 px-0.5">
+            Пунктир — прогноз расхода на сегодня (не итоговый расход за день)
+          </p>
+        ) : null}
+        </div>
 
         <ChartContainer title="Баланс и белок" height="sm">
           <ResponsiveContainer width="100%" height="100%">

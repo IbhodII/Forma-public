@@ -17,6 +17,7 @@ import {BodyMetricsGrid} from './body/BodyMetricsGrid';
 import {BodyTrendChart} from './body/BodyTrendChart';
 
 import {buildWeightLinePoints} from './body/bodyChart';
+import {formatBodyMetricSigned, formatBodyMetricValue} from '../utils/bodyMetrics';
 
 import {BodyInsightsPanel} from './BodyInsightsPanel';
 
@@ -173,11 +174,11 @@ export function BodyMeasurementsTab() {
       {weightDelta != null || waistDelta != null ? (
         <AppText variant="caption" color="textSecondary">
           {weightDelta != null
-            ? `Вес: ${weightDelta >= 0 ? '+' : ''}${weightDelta.toFixed(1)} кг vs пред.`
+            ? `Вес: ${formatBodyMetricSigned(weightDelta)} кг vs пред.`
             : ''}
           {weightDelta != null && waistDelta != null ? ' · ' : ''}
           {waistDelta != null
-            ? `Талия: ${waistDelta >= 0 ? '+' : ''}${waistDelta.toFixed(1)} см vs пред.`
+            ? `Талия: ${formatBodyMetricSigned(waistDelta)} см vs пред.`
             : ''}
         </AppText>
       ) : null}
@@ -221,7 +222,7 @@ export function BodyMeasurementsTab() {
 
               date={item.date}
 
-              detail={`Вес: ${item.weight_kg ?? '—'} · Жир: ${item.body_fat_percent ?? '—'}% · Талия: ${item.waist_cm ?? '—'}`}
+              detail={`Вес: ${formatBodyMetricValue(item.weight_kg, ' кг')} · Жир: ${formatBodyMetricValue(item.body_fat_percent, '%')} · Талия: ${formatBodyMetricValue(item.waist_cm, ' см')}`}
 
               onDelete={() => deleteMutation.mutate(item.date)}
 

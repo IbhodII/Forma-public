@@ -295,14 +295,54 @@ def clear_stale_import_lock(*, log: logging.Logger | None = None) -> bool:
     return True
 
 
+def _has_active_import_worker() -> bool:
+    with _lock:
+        for task in _tasks.values():
+            if task.status in ("pending", "running"):
+                return True
+    return False
+
+
+def _is_import_worker_active(task_id: str) -> bool:
+    with _lock:
+        task = _tasks.get(task_id)
+        return task is not None and task.status in ("pending", "running")
+
+
+def _clear_orphan_import_lock(*, log: logging.Logger | None = None) -> bool:
+    """Drop lock file when no import worker is running (crashed thread / API reload)."""
+    lock = import_lock_path()
+    if not lock.is_file():
+        return False
+    task_id = _read_lock_task_id(lock)
+    if task_id:
+        _release_import_lock(task_id)
+    else:
+        try:
+            lock.unlink(missing_ok=True)
+        except OSError as err:
+            if log:
+                log.warning("[import] could not remove orphan lock %s: %s", lock, err)
+            return False
+    if log:
+        log.warning(
+            "[import] cleared orphan db import lock (task_id=%s, no active worker)",
+            task_id,
+        )
+    return True
+
+
 def is_database_import_in_progress() -> bool:
+    if _has_active_import_worker():
+        return True
     lock = import_lock_path()
     if not lock.is_file():
         return False
     if _import_lock_pid_alive(lock) is False:
         clear_stale_import_lock(log=logger)
         return False
-    return True
+    _clear_orphan_import_lock(log=logger)
+    return False
 
 
 def _percent_for(stage: str, processed: int, total: int) -> int:
@@ -509,24 +549,28 @@ def _merge_from_staging(
             on_progress(idx, total, table)
             if table in MEAL_PLAN_TABLES:
                 target_schema = "main" if meal_plans_in_workouts(conn) else "shared"
-                if not _table_exists_on_connection(conn, "import_shared", table):
+                import_schema = None
+                if _table_exists_on_connection(conn, "import_shared", table):
+                    import_schema = "import_shared"
+                elif _table_exists_on_connection(conn, "import_main", table):
+                    import_schema = "import_main"
+                if import_schema is None:
                     continue
                 if not _table_exists_on_connection(conn, target_schema, table):
-                    live_cols = _pragma_columns(conn, "import_shared", table)
-                    col_list = ", ".join(live_cols)
+                    live_cols = _pragma_columns(conn, import_schema, table)
                     conn.execute(
                         f"CREATE TABLE {target_schema}.{table} AS "
-                        f"SELECT * FROM import_shared.{table} WHERE 0"
+                        f"SELECT * FROM {import_schema}.{table} WHERE 0"
                     )
                 live_cols = _pragma_columns(conn, target_schema, table)
-                imp_cols = _pragma_columns(conn, "import_shared", table)
+                imp_cols = _pragma_columns(conn, import_schema, table)
                 common = [c for c in imp_cols if c in live_cols]
                 if not common:
                     continue
                 col_sql = ", ".join(common)
                 conn.execute(
                     f"INSERT OR REPLACE INTO {target_schema}.{table} ({col_sql}) "
-                    f"SELECT {col_sql} FROM import_shared.{table}"
+                    f"SELECT {col_sql} FROM {import_schema}.{table}"
                 )
                 stats[table] = conn.total_changes
                 conn.commit()
@@ -989,6 +1033,14 @@ def get_database_import_task(task_id: str) -> DatabaseImportTaskState | None:
         return task
     persisted = _load_persisted_task(task_id)
     if persisted is not None:
+        if persisted.status in ("pending", "running") and not _is_import_worker_active(task_id):
+            persisted.status = "failed"
+            persisted.stage = "error"
+            persisted.error = "Импорт прерван (перезапуск API или сбой процесса)."
+            persisted.message = persisted.error
+            persisted.progressPercent = 0
+            _persist_job_status(persisted)
+            _release_import_lock(task_id)
         with _lock:
             _tasks[task_id] = persisted
     return persisted

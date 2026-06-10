@@ -2,11 +2,30 @@ const { ipcRenderer } = require("electron");
 
 let sent = false;
 
+const OAUTH_CALLBACK_PATHS = [
+  "/api/cloud/callback/yandex",
+  "/api/cloud/callback/google",
+  "/api/polar/callback",
+];
+
+/** Макс. ожидание payload на странице callback (~90 с). */
+const CALLBACK_PAYLOAD_MAX_ATTEMPTS = 450;
+const CALLBACK_PAYLOAD_POLL_MS = 200;
+
 function oauthLog(event, detail) {
   try {
     ipcRenderer.send("oauth-flow-log", { event, detail });
   } catch {
     // ignore logging failures in the popup preload
+  }
+}
+
+function isOAuthCallbackUrl(href) {
+  try {
+    const path = new URL(href).pathname;
+    return OAUTH_CALLBACK_PATHS.some((segment) => path.includes(segment));
+  } catch {
+    return false;
   }
 }
 
@@ -60,8 +79,14 @@ function sendPayload(reason) {
 }
 
 function trySend(reason) {
+  if (!isOAuthCallbackUrl(location.href)) {
+    oauthLog("preload_skip_non_callback", { reason, url: location.href });
+    return;
+  }
+
   oauthLog("preload_dom_ready", { reason, url: location.href });
   if (sendPayload(reason)) return;
+
   let attempts = 0;
   const timer = setInterval(() => {
     attempts += 1;
@@ -69,7 +94,7 @@ function trySend(reason) {
       clearInterval(timer);
       return;
     }
-    if (attempts >= 100) {
+    if (attempts >= CALLBACK_PAYLOAD_MAX_ATTEMPTS) {
       clearInterval(timer);
       if (sent) return;
       sent = true;
@@ -84,12 +109,13 @@ function trySend(reason) {
         payload: {
           type: messageTypeFromLocation(),
           status: "error",
-          message: "callback_payload_timeout",
+          message:
+            "Сервер не вернул подтверждение вовремя. Закройте окно и нажмите «Подключить» ещё раз.",
           error: "callback_payload_timeout",
         },
       });
     }
-  }, 100);
+  }, CALLBACK_PAYLOAD_POLL_MS);
 }
 
 oauthLog("callback_page_loaded", { phase: "preload-start", url: location.href });

@@ -144,6 +144,25 @@ const BLOCK_EDGE = [
   "rgba(168, 85, 247, 0.32)",
 ];
 
+const DEFAULT_BLOCK_FILL = BLOCK_FILL[0];
+const DEFAULT_BLOCK_EDGE = BLOCK_EDGE[0];
+
+/** 1-based block_index → palette slot; guards 0/NaN from API or merge intermediates. */
+export function blockOverlayColorIndex(block: Pick<StrengthHrDetectedBlock, "block_index" | "block_id">): number {
+  const raw =
+    typeof block.block_index === "number" && block.block_index > 0
+      ? block.block_index
+      : typeof block.block_id === "number" && block.block_id > 0
+        ? block.block_id
+        : 1;
+  return (Math.floor(raw) - 1 + BLOCK_FILL.length * 8) % BLOCK_FILL.length;
+}
+
+function tintRgba(color: string | undefined, fallback: string, from: string, to: string): string {
+  if (!color) return fallback;
+  return color.includes(from) ? color.replace(from, to) : color;
+}
+
 /** Whether set labels should appear on chart overlays (high confidence only, or manual toggle). */
 export function shouldAutoShowSetMapping(
   confidence: string | null | undefined,
@@ -174,22 +193,38 @@ function blockStyle(
     const lineWidth = editMode ? (isSelected ? 1.2 : 0.85) : 0.5;
     return { fill: WARMUP_FILL, edge: WARMUP_EDGE, dash: "dash", lineWidth };
   }
-  const fill = BLOCK_FILL[colorIdx];
-  const edge = BLOCK_EDGE[colorIdx];
+  const fill = BLOCK_FILL[colorIdx] ?? DEFAULT_BLOCK_FILL;
+  const edge = BLOCK_EDGE[colorIdx] ?? DEFAULT_BLOCK_EDGE;
   let baseWidth = editMode ? 1 : b.confidence === "high" ? 0.75 : 0.5;
   if (isSelected && editMode) baseWidth = 1.5;
   if (b.confidence === "low") {
-    const mutedFill = isSelected && editMode ? fill.replace("0.07", "0.08") : fill.replace("0.07", "0.04");
-    const mutedEdge = isSelected && editMode ? edge.replace("0.32", "0.55") : edge.replace("0.32", "0.22");
+    const mutedFill =
+      isSelected && editMode
+        ? tintRgba(fill, DEFAULT_BLOCK_FILL, "0.07", "0.08")
+        : tintRgba(fill, DEFAULT_BLOCK_FILL, "0.07", "0.04");
+    const mutedEdge =
+      isSelected && editMode
+        ? tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.55")
+        : tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.22");
     return { fill: mutedFill, edge: mutedEdge, dash: "dot", lineWidth: baseWidth };
   }
   if (b.confidence === "medium") {
-    const mutedFill = isSelected && editMode ? fill.replace("0.07", "0.12") : fill;
-    const mutedEdge = isSelected && editMode ? edge.replace("0.32", "0.55") : edge.replace("0.32", "0.26");
+    const mutedFill =
+      isSelected && editMode ? tintRgba(fill, DEFAULT_BLOCK_FILL, "0.07", "0.12") : fill;
+    const mutedEdge =
+      isSelected && editMode
+        ? tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.55")
+        : tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.26");
     return { fill: mutedFill, edge: mutedEdge, dash: "dot", lineWidth: baseWidth };
   }
-  const activeFill = isSelected && editMode ? fill.replace("0.07", "0.16") : fill.replace("0.07", "0.1");
-  const activeEdge = isSelected && editMode ? edge.replace("0.32", "0.65") : edge.replace("0.32", "0.45");
+  const activeFill =
+    isSelected && editMode
+      ? tintRgba(fill, DEFAULT_BLOCK_FILL, "0.07", "0.16")
+      : tintRgba(fill, DEFAULT_BLOCK_FILL, "0.07", "0.1");
+  const activeEdge =
+    isSelected && editMode
+      ? tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.65")
+      : tintRgba(edge, DEFAULT_BLOCK_EDGE, "0.32", "0.45");
   return { fill: activeFill, edge: activeEdge, dash: "solid", lineWidth: baseWidth };
 }
 
@@ -221,9 +256,16 @@ export function buildHrBlockOverlays(
   const hoverText: string[] = [];
 
   for (const b of blocks) {
+    if (
+      !Number.isFinite(b.start_sec) ||
+      !Number.isFinite(b.end_sec) ||
+      b.end_sec <= b.start_sec
+    ) {
+      continue;
+    }
     const x0 = blockToX(b.start_sec, timeAxisSeconds);
     const x1 = blockToX(b.end_sec, timeAxisSeconds);
-    const colorIdx = (b.block_index - 1) % BLOCK_FILL.length;
+    const colorIdx = blockOverlayColorIndex(b);
     const blockId = (b as StrengthHrDetectedBlock & { block_id?: number }).block_id ?? b.block_index;
     const isSelected = selectedBlockId != null && blockId === selectedBlockId;
     const { fill, edge, dash, lineWidth } = blockStyle(b, colorIdx, editMode, isSelected);

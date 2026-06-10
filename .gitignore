@@ -1,8 +1,13 @@
+# Packaging / editor
+packaging/seed/*.db
+.cursor/
+
 # Secrets / local configuration
 .env
 .env.*
 !.env.example
 !**/.env.example
+!.env.desktop.public
 frontend/.env.local
 mobile/.env
 .api-port
@@ -48,14 +53,19 @@ blob-report/
 playwright/.cache/
 coverage/
 
-# Runtime databases and backups
-*.db
+# Runtime databases and backups — only root shared.db (public reference) may be tracked
+**/*.db
+!/shared.db
+packaging/**/*.db
 *.db-*
 *.sqlite
 *.sqlite3
 *.bak
 *.wal
 *.shm
+
+# Local backup output (backup_to_excel.py)
+backups/
 
 # Runtime jobs, logs, reports, exports
 import-jobs/

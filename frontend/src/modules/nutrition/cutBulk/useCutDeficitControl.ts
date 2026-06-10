@@ -7,14 +7,16 @@ import { useToast } from "../../../components/Toast";
 import { loadPreferChestWorkoutKcal } from "../../../pages/FoodDiary/workoutExpenditure";
 import { parseApiError } from "../../../utils/validation";
 
-const DEFAULT_MAX_DEFICIT = 35;
-const MIN_MAX_DEFICIT = 5;
-const MAX_MAX_DEFICIT = 70;
+import {
+  DEFAULT_MAX_DEFICIT_PER_KG_FAT,
+  MAX_DEFICIT_PER_KG_FAT,
+  MIN_DEFICIT_PER_KG_FAT,
+} from "./deficitLimits";
 
 export function useCutDeficitControl(preferChestProp?: boolean) {
   const { showToast } = useToast();
   const qc = useQueryClient();
-  const [maxDeficit, setMaxDeficit] = useState(DEFAULT_MAX_DEFICIT);
+  const [maxDeficit, setMaxDeficit] = useState(DEFAULT_MAX_DEFICIT_PER_KG_FAT);
   const preferChest = preferChestProp ?? loadPreferChestWorkoutKcal();
 
   const profileQuery = useQuery({
@@ -43,8 +45,15 @@ export function useCutDeficitControl(preferChestProp?: boolean) {
   });
 
   const persistLimit = () => {
-    if (!Number.isFinite(maxDeficit) || maxDeficit < MIN_MAX_DEFICIT || maxDeficit > MAX_MAX_DEFICIT) {
-      showToast("Лимит дефицита должен быть от 5 до 70 ккал/кг жира", "error");
+    if (
+      !Number.isFinite(maxDeficit) ||
+      maxDeficit < MIN_DEFICIT_PER_KG_FAT ||
+      maxDeficit > MAX_DEFICIT_PER_KG_FAT
+    ) {
+      showToast(
+        `Лимит дефицита должен быть от ${MIN_DEFICIT_PER_KG_FAT} до ${MAX_DEFICIT_PER_KG_FAT} ккал/кг жира`,
+        "error",
+      );
       return;
     }
     saveMut.mutate(maxDeficit);
@@ -57,8 +66,8 @@ export function useCutDeficitControl(preferChestProp?: boolean) {
   return {
     maxDeficit,
     setMaxDeficit,
-    minMaxDeficit: MIN_MAX_DEFICIT,
-    maxMaxDeficit: MAX_MAX_DEFICIT,
+    minMaxDeficit: MIN_DEFICIT_PER_KG_FAT,
+    maxMaxDeficit: MAX_DEFICIT_PER_KG_FAT,
     persistLimit,
     savePending: saveMut.isPending,
     controlQuery,

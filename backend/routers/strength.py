@@ -307,7 +307,7 @@ def api_append_exercise(body: AppendExerciseBody):
 @router.get(
     "/exercises",
     response_model=list[str],
-    summary="Справочник упражнений (all_exercises)",
+    summary="Справочник названий упражнений (shared + пользовательские)",
 )
 def api_list_exercises():
     return strength_service.list_unique_exercises()

@@ -12,14 +12,36 @@ type PlotProps = Omit<PlotParams, "layout"> & {
   compact?: boolean;
   /** Крупный график для hero-секций аналитики */
   tall?: boolean;
+  /** Явный размер (приоритет над compact/tall) */
+  size?: PlotChartSize;
   onInitialized?: PlotParams["onInitialized"];
   onUpdate?: PlotParams["onUpdate"];
   onClick?: PlotParams["onClick"];
   onRelayout?: PlotParams["onRelayout"];
 };
 
-const plotMinHeight = (compact?: boolean, tall?: boolean) =>
-  tall ? 360 : compact ? 220 : 280;
+export type PlotChartSize = "compact" | "default" | "tall" | "cardio";
+
+const PLOT_MIN_HEIGHT: Record<PlotChartSize, { mobile: number; desktop: number }> = {
+  compact: { mobile: 190, desktop: 220 },
+  default: { mobile: 220, desktop: 280 },
+  tall: { mobile: 280, desktop: 360 },
+  cardio: { mobile: 300, desktop: 420 },
+};
+
+function resolvePlotSize(
+  compact?: boolean,
+  tall?: boolean,
+  size?: PlotChartSize,
+): PlotChartSize {
+  if (size) return size;
+  if (tall) return "tall";
+  if (compact) return "compact";
+  return "default";
+}
+
+const plotMinHeight = (size: PlotChartSize, isMobile: boolean) =>
+  PLOT_MIN_HEIGHT[size][isMobile ? "mobile" : "desktop"];
 
 /** Plotly wrapper: библиотека грузится только при первом рендере графика. */
 export function PlotChart({
@@ -27,6 +49,7 @@ export function PlotChart({
   className,
   compact,
   tall,
+  size: sizeProp,
   onInitialized,
   onUpdate,
   onClick,
@@ -35,6 +58,7 @@ export function PlotChart({
 }: PlotProps) {
   const { resolvedTheme } = useTheme();
   const [ready, setReady] = useState(() => getPlotlyComponent() != null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
@@ -45,9 +69,19 @@ export function PlotChart({
       return;
     }
     let cancelled = false;
-    void loadPlotlyComponent().then(() => {
-      if (!cancelled) setReady(true);
-    });
+    void loadPlotlyComponent()
+      .then(() => {
+        if (!cancelled) {
+          setLoadError(null);
+          setReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadError("Не удалось загрузить график. Перезапустите приложение или обновите страницу.");
+          setReady(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -66,13 +100,21 @@ export function PlotChart({
   );
 
   const Plot = getPlotlyComponent();
-  const minH = isMobile
-    ? tall
-      ? 280
-      : compact
-        ? 190
-        : 220
-    : plotMinHeight(compact, tall);
+  const plotSize = resolvePlotSize(compact, tall, sizeProp);
+  const minH = plotMinHeight(plotSize, isMobile);
+  const isCompactBar = plotSize === "compact";
+
+  if (loadError) {
+    return (
+      <div
+        className={className ?? "w-full"}
+        style={{ width: "100%", minHeight: minH }}
+        role="alert"
+      >
+        <p className="text-xs text-amber-800 dark:text-amber-200 px-2 py-4 text-center">{loadError}</p>
+      </div>
+    );
+  }
 
   if (!ready || !Plot) {
     return (
@@ -98,7 +140,7 @@ export function PlotChart({
         style={{ width: "100%", minHeight: minH }}
         config={{
           responsive: true,
-          displayModeBar: compact ? "hover" : true,
+          displayModeBar: isCompactBar ? "hover" : true,
           displaylogo: false,
           modeBarButtonsToRemove: ["lasso2d", "select2d"],
           locale: "ru",
@@ -107,7 +149,7 @@ export function PlotChart({
           ...mergedLayout,
           font: {
             ...mergedLayout.font,
-            size: isMobile ? 10 : compact ? 11 : 12,
+            size: isMobile ? 10 : plotSize === "compact" ? 11 : plotSize === "cardio" ? 12 : 12,
           },
         }}
       />

@@ -1,5 +1,7 @@
 # SETUP.md
 
+> **Archived.** Use [../DEVELOPER_SETUP.md](../DEVELOPER_SETUP.md) and root [README.md](../../README.md). Packaged API port **18002** here is outdated — current default is **8000**.
+
 Установка и запуск **MyHealthDashboard** на Windows.
 
 ---

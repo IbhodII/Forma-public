@@ -4,7 +4,7 @@
 
 **UI:** [DESKTOP_UI.md](./DESKTOP_UI.md) · **Mobile:** [MOBILE.md](./MOBILE.md) · **API:** `GET /api/analytics/*`
 
-Last updated: 2026-06-05.
+Last updated: 2026-06-09.
 
 ---
 
@@ -84,6 +84,40 @@ TSB_d = CTL_d − ATL_d
 - Passive HR invalidation: `queryKey` prefix `["analytics", "passive-hr"]` (исправлено с `passiveHeartRate`).
 
 **Удалено (мёртвый код):** `AthleteDashboardHero.tsx`, `AnalyticsPage.tsx` re-export, `StrengthProgressTable.tsx`, часть FoodDiary premium blocks.
+
+---
+
+## Route & Workout Telemetry Inspection
+
+**Phase 1 (shipped 2026-06-09):** Running and cycling map tooltips use `RoutePointTelemetry` + backend `merge_telemetry_into_track_points` to show available per-point metrics (HR, speed, elevation, power, cadence, temperature, distance, elapsed time) when present.
+
+**Phase 2 (planned, P2):** Map ↔ chart synchronization and replay scrubbing — not yet implemented.
+
+Cardio activities may store dense per-point telemetry (FIT, Polar, GPX/TCX, Health Connect). Speed-colored routes and separate charts use this data; point popups now expose the metric set dynamically (hide absent fields).
+
+**Point popup / inspector fields** (show when present for the activity):
+
+| Metric | Notes |
+|--------|--------|
+| Time / elapsed time | Wall-clock or offset from start |
+| Distance from start | Cumulative along route |
+| Speed | km/h; running may also show pace |
+| Heart rate | From HR stream or enriched GeoJSON |
+| Cadence | RPM/SPM when imported |
+| Elevation | meters; grade/slope when derivable |
+| Power | Sensor or estimated (`power_source`) |
+| Temperature | When sensor/file provides it |
+| Other | Provider-specific extensions |
+
+**UX principles:** dynamic field list; no empty placeholders; source-aware labels (metric vs american units).
+
+**Future analytics layer (architecture should stay compatible):**
+
+- map selection ↔ chart highlight (speed, HR, elevation, power);
+- chart selection ↔ map marker;
+- synchronized scrubbing during route replay.
+
+Roadmap: [ROADMAP.md](./ROADMAP.md) — Route Point Telemetry & Map Inspection. Implementation reference: [archive/BIKE.md](./archive/BIKE.md), [WORKOUTS.md](./WORKOUTS.md).
 
 ---
 

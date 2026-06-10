@@ -30,6 +30,8 @@ export interface WorkoutBlock {
   rounds: number;
   collapsed?: boolean;
   approaches: WorkoutApproach[];
+  /** Per-round rows for superset/circuit; when set, save uses these instead of cloning template. */
+  roundApproaches?: WorkoutApproach[][];
 }
 
 let approachSeq = 0;
@@ -78,7 +80,51 @@ export function cloneWorkoutBlock(block: WorkoutBlock): WorkoutBlock {
     ...block,
     id: `block-${blockSeq}`,
     approaches: block.approaches.map(cloneWorkoutApproach),
+    roundApproaches: block.roundApproaches?.map((round) => round.map(cloneWorkoutApproach)),
     collapsed: false,
+  };
+}
+
+/** Ensure per-round rows exist for superset/circuit blocks and match rounds count. */
+export function ensureBlockRoundApproaches(block: WorkoutBlock, useAmerican: boolean): WorkoutBlock {
+  if (block.type === "normal") {
+    return { ...block, roundApproaches: undefined };
+  }
+  const rounds = Math.max(1, Math.floor(block.rounds || 1));
+  const template = block.approaches.length
+    ? block.approaches.map(cloneWorkoutApproach)
+    : [newWorkoutApproach(useAmerican)];
+  let roundApproaches = block.roundApproaches?.map((round) => round.map(cloneWorkoutApproach));
+  if (!roundApproaches?.length) {
+    roundApproaches = [template.map(cloneWorkoutApproach)];
+  }
+  while (roundApproaches.length < rounds) {
+    const src = roundApproaches[roundApproaches.length - 1] ?? template;
+    roundApproaches.push(src.map(cloneWorkoutApproach));
+  }
+  if (roundApproaches.length > rounds) {
+    roundApproaches = roundApproaches.slice(0, rounds);
+  }
+  return {
+    ...block,
+    rounds,
+    approaches: roundApproaches[0]?.map(cloneWorkoutApproach) ?? template,
+    roundApproaches,
+  };
+}
+
+/** Copy one round's values to all other rounds in the block. */
+export function applyRoundToAllRounds(block: WorkoutBlock, roundIndex: number): WorkoutBlock {
+  if (!block.roundApproaches?.length || roundIndex < 0 || roundIndex >= block.roundApproaches.length) {
+    return block;
+  }
+  const source = block.roundApproaches[roundIndex].map(cloneWorkoutApproach);
+  return {
+    ...block,
+    roundApproaches: block.roundApproaches.map((_, i) =>
+      i === roundIndex ? source : source.map(cloneWorkoutApproach),
+    ),
+    approaches: source.map(cloneWorkoutApproach),
   };
 }
 
@@ -376,8 +422,13 @@ export function blocksToStrengthSets(
       throw new Error("Для суперсета или круга добавьте минимум 2 упражнения");
     }
     const rounds = block.type === "normal" ? 1 : Math.max(1, Math.floor(block.rounds || 1));
+    const perRound =
+      block.type !== "normal" && block.roundApproaches?.length
+        ? block.roundApproaches.slice(0, rounds)
+        : null;
     for (let round = 1; round <= rounds; round += 1) {
-      block.approaches.forEach((row, exerciseIndex) => {
+      const rows = perRound?.[round - 1] ?? block.approaches;
+      rows.forEach((row, exerciseIndex) => {
         if (block.type !== "normal" && row.is_warmup && round > 1) {
           return;
         }
@@ -441,26 +492,47 @@ export function blocksFromSessionDetail(
         );
         const first = sorted[0];
         const type = first.block_type || "normal";
-        const firstRound = Math.min(...sorted.map((s) => s.round_index ?? 1));
-        const templateRows =
-          type === "normal"
-            ? sorted
-            : sorted.filter((s) => (s.round_index ?? 1) === firstRound);
+        const roundCount =
+          first.block_rounds ??
+          Math.max(1, ...sorted.map((s) => Number(s.round_index ?? 1)));
+        const sortExerciseRows = (rows: StrengthOrderedSetRow[]) =>
+          [...rows].sort(
+            (a, b) =>
+              (a.block_exercise_order ?? 0) - (b.block_exercise_order ?? 0) ||
+              (a.order_index ?? 0) - (b.order_index ?? 0),
+          );
+        if (type === "normal") {
+          return {
+            id: key,
+            type,
+            title: first.block_title || undefined,
+            rounds: 1,
+            collapsed: false,
+            approaches: sortExerciseRows(sorted).map((s) => approachFromOrderedSet(s, useAmerican)),
+          } satisfies WorkoutBlock;
+        }
+        const roundApproaches: WorkoutApproach[][] = [];
+        for (let r = 1; r <= roundCount; r += 1) {
+          const roundRows = sortExerciseRows(
+            sorted.filter((s) => (s.round_index ?? 1) === r),
+          );
+          if (roundRows.length) {
+            roundApproaches.push(roundRows.map((s) => approachFromOrderedSet(s, useAmerican)));
+          }
+        }
+        const templateApproaches =
+          roundApproaches[0]?.map(cloneWorkoutApproach) ??
+          sortExerciseRows(
+            sorted.filter((s) => (s.round_index ?? 1) === Math.min(...sorted.map((x) => x.round_index ?? 1))),
+          ).map((s) => approachFromOrderedSet(s, useAmerican));
         return {
           id: key,
           type,
           title: first.block_title || undefined,
-          rounds:
-            first.block_rounds ??
-            Math.max(1, ...sorted.map((s) => Number(s.round_index ?? 1))),
+          rounds: roundCount,
           collapsed: false,
-          approaches: templateRows
-            .sort(
-              (a, b) =>
-                (a.block_exercise_order ?? 0) - (b.block_exercise_order ?? 0) ||
-                (a.order_index ?? 0) - (b.order_index ?? 0),
-            )
-            .map((s) => approachFromOrderedSet(s, useAmerican)),
+          approaches: templateApproaches,
+          roundApproaches: roundApproaches.length ? roundApproaches : undefined,
         } satisfies WorkoutBlock;
       })
       .sort((a, b) => {
@@ -500,6 +572,73 @@ export function blocksFromSessionDetail(
   return blocks;
 }
 
+function exerciseBlockKey(name: string, fallback: string): string {
+  const trimmed = name.trim();
+  return trimmed ? trimmed.toLocaleLowerCase("ru-RU") : fallback;
+}
+
+function approachesFromTemplateExerciseRow(
+  row: ExerciseSetBlock["exercises"][number],
+  ex: WorkoutFormPrefill["exercises"][number] | undefined,
+  blockType: WorkoutBlockType,
+  useAmerican: boolean,
+  hintFor: (ex: WorkoutFormPrefill["exercises"][number] | undefined, isBw: boolean) => string | undefined,
+): WorkoutApproach[] {
+  const isBw = Boolean(row.is_bodyweight || ex?.is_bodyweight) || isPlankExercise(row.exercise);
+  const nums = ex?.last_date ? repsNums(ex.last_reps) : [];
+  const warmupRows = warmupApproachesFromPrefillExercise(ex, isBw, useAmerican);
+  const templateRep = row.reps ?? (isBw ? row.duration_sec : null) ?? 8;
+  const templateWeight = row.weight ?? 0;
+  const build = (n: number) =>
+    newWorkoutApproach(useAmerican, {
+      exercise: row.exercise,
+      reps: String(isBw ? 1 : n),
+      weightKg: isBw ? 0 : (ex?.last_date && ex.last_weight != null ? ex.last_weight : templateWeight),
+      duration_sec: isBw
+        ? String(ex?.last_date ? n : row.duration_sec ?? templateRep)
+        : row.duration_sec != null
+          ? String(row.duration_sec)
+          : undefined,
+      is_bodyweight: isBw,
+      is_warmup: ex?.last_date ? false : row.is_warmup,
+      lastHint: hintFor(ex, isBw),
+    });
+
+  if (blockType === "normal" && nums.length) {
+    return [...warmupRows, ...nums.map(build)];
+  }
+  return [...warmupRows, build(nums[0] ?? templateRep)];
+}
+
+/** One normal block per exercise; supersets/circuits stay grouped. */
+export function splitNormalBlocksByExercise(blocks: WorkoutBlock[], useAmerican: boolean): WorkoutBlock[] {
+  const out: WorkoutBlock[] = [];
+  for (const block of blocks) {
+    if (block.type !== "normal") {
+      out.push(block);
+      continue;
+    }
+    const order: string[] = [];
+    const grouped = new Map<string, WorkoutApproach[]>();
+    for (const row of block.approaches) {
+      const key = exerciseBlockKey(row.exercise, row.id);
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+        order.push(key);
+      }
+      grouped.get(key)!.push(row);
+    }
+    if (order.length <= 1) {
+      out.push(block);
+      continue;
+    }
+    for (const key of order) {
+      out.push(newWorkoutBlock(useAmerican, "normal", { approaches: grouped.get(key) ?? [] }));
+    }
+  }
+  return out;
+}
+
 export function blocksFromPrefill(
   prefill: WorkoutFormPrefill,
   useAmerican: boolean,
@@ -519,50 +658,59 @@ export function blocksFromPrefill(
           }`
         : undefined;
 
-    return prefill.blocks.map((block) => {
+    return prefill.blocks.flatMap((block) => {
+      if (block.type === "normal") {
+        const order: string[] = [];
+        const templateByExercise = new Map<string, ExerciseSetBlock["exercises"][number]>();
+        for (const row of block.exercises) {
+          const key = row.exercise.trim().toLowerCase();
+          if (!key || templateByExercise.has(key)) continue;
+          templateByExercise.set(key, row);
+          order.push(key);
+        }
+        return order.map((key) => {
+          const row = templateByExercise.get(key)!;
+          const ex = exerciseByName.get(key);
+          return newWorkoutBlock(useAmerican, "normal", {
+            approaches: approachesFromTemplateExerciseRow(
+              row,
+              ex,
+              block.type,
+              useAmerican,
+              hintFor,
+            ),
+          });
+        });
+      }
+
       const perExerciseReps = block.exercises.map((row) => {
         const ex = exerciseByName.get(row.exercise.trim().toLowerCase());
         return repsNums(ex?.last_date ? ex.last_reps : null);
       });
       const factualRounds = Math.max(0, ...perExerciseReps.map((nums) => nums.length));
-      const rounds = block.type === "normal" ? 1 : factualRounds || block.rounds;
+      const rounds = factualRounds || block.rounds;
       const hydratedExercises = new Set<string>();
-      return newWorkoutBlock(useAmerican, block.type, {
-        title: block.title ?? undefined,
-        rounds,
-        approaches: block.exercises.flatMap((row, rowIndex) => {
-          const key = row.exercise.trim().toLowerCase();
-          const ex = exerciseByName.get(key);
-          if (ex?.last_date) {
-            if (hydratedExercises.has(key)) return [];
-            hydratedExercises.add(key);
-          }
-          const isBw = Boolean(row.is_bodyweight || ex?.is_bodyweight) || isPlankExercise(row.exercise);
-          const nums = ex?.last_date ? perExerciseReps[rowIndex] : [];
-          const warmupRows = warmupApproachesFromPrefillExercise(ex, isBw, useAmerican);
-          const templateRep = row.reps ?? (isBw ? row.duration_sec : null) ?? 8;
-          const templateWeight = row.weight ?? 0;
-          const build = (n: number) =>
-            newWorkoutApproach(useAmerican, {
-              exercise: row.exercise,
-              reps: String(isBw ? 1 : n),
-              weightKg: isBw ? 0 : (ex?.last_date && ex.last_weight != null ? ex.last_weight : templateWeight),
-              duration_sec: isBw
-                ? String(ex?.last_date ? n : row.duration_sec ?? templateRep)
-                : row.duration_sec != null
-                  ? String(row.duration_sec)
-                  : undefined,
-              is_bodyweight: isBw,
-              is_warmup: ex?.last_date ? false : row.is_warmup,
-              lastHint: hintFor(ex, isBw),
-            });
-
-          if (block.type === "normal" && nums.length) {
-            return [...warmupRows, ...nums.map(build)];
-          }
-          return [...warmupRows, build(nums[0] ?? templateRep)];
+      return [
+        newWorkoutBlock(useAmerican, block.type, {
+          title: block.title ?? undefined,
+          rounds,
+          approaches: block.exercises.flatMap((row) => {
+            const key = row.exercise.trim().toLowerCase();
+            const ex = exerciseByName.get(key);
+            if (ex?.last_date) {
+              if (hydratedExercises.has(key)) return [];
+              hydratedExercises.add(key);
+            }
+            return approachesFromTemplateExerciseRow(
+              row,
+              ex,
+              block.type,
+              useAmerican,
+              hintFor,
+            );
+          }),
         }),
-      });
+      ];
     });
   }
   const approaches = approachesFromPrefill(prefill, useAmerican, formatBarbellWeight, formatDateRu);
@@ -591,7 +739,7 @@ export function blocksFromPrefill(
 }
 
 export function workoutBlocksToExerciseSetBlocks(blocks: WorkoutBlock[], useAmerican: boolean): ExerciseSetBlock[] {
-  return blocks.map((block) => ({
+  return splitNormalBlocksByExercise(blocks, useAmerican).map((block) => ({
     id: block.id,
     type: block.type,
     title: block.title ?? null,
@@ -618,7 +766,7 @@ export function workoutBlocksFromExerciseSetBlocks(
   useAmerican: boolean,
 ): WorkoutBlock[] {
   if (blocks?.length) {
-    return blocks.map((block) =>
+    const loaded = blocks.map((block) =>
       newWorkoutBlock(useAmerican, block.type, {
         title: block.title ?? undefined,
         rounds: block.rounds,
@@ -634,6 +782,7 @@ export function workoutBlocksFromExerciseSetBlocks(
         ),
       }),
     );
+    return splitNormalBlocksByExercise(loaded, useAmerican);
   }
   return exercises.map((exercise) =>
     newWorkoutBlock(useAmerican, "normal", {

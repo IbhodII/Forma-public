@@ -2,7 +2,7 @@
 
 Актуальные ограничения Forma. Backlog — [ROADMAP.md](./ROADMAP.md), release gates — [RELEASE_READINESS.md](./RELEASE_READINESS.md).
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -21,7 +21,7 @@ Expected: measurements should be editable directly from chart/history without cr
 | Проблема | Где | Статус | Workaround |
 |----------|-----|--------|------------|
 | Exercise template creation loses block structure | Workout exercise templates / sets | **Open** | Manually repair in Block Structure editor |
-| Goal deficit validation rejects >60 kcal/kg fat | Nutrition / goal system | **Open** | Keep value ≤60 until frontend/backend/schema limit is fixed |
+| Goal deficit validation rejects >60 kcal/kg fat | Nutrition / goal system | **Fixed** | Limit is 70 kcal/kg fat (shared constant) |
 | Health Connect validation incomplete | Mobile HC, desktop hub, sync | **Open** | Use HC diagnostics and verify source app sync manually |
 | FormaSync validation incomplete | Desktop/mobile cloud sync | **Open** | Avoid simultaneous edits to same entity; inspect sync status/errors |
 | Historical Xiaomi/Mi import | Import tools | **Planned** | No production import yet |
@@ -30,7 +30,9 @@ Exercise template expected behavior: preserve block order, block names, exercise
 
 Historical Xiaomi import details: [HISTORICAL_IMPORTS.md](./HISTORICAL_IMPORTS.md).
 
-Goal deficit expected behavior: values up to **70 kcal/kg fat** should save successfully; values above 70 should be rejected with a user-friendly validation message. Current behavior rejects values above approximately 60 with HTTP 422. Investigation must verify frontend validation limits, backend validation limits, API schema constraints and settings persistence logic.
+Goal deficit expected behavior: values up to **70 kcal/kg fat** save successfully; values above 70 are rejected with a user-friendly validation message. Frontend, backend profile save, and `/forecast/dynamic` API use the same `MAX_DEFICIT_PER_KG_FAT = 70` constant.
+
+**Route point telemetry (phase 1):** Per-point popups on running/cycling maps now show available metrics (HR, speed, elevation, power, etc.) — **fixed 2026-06-09** (see Medium table). **Phase 2** (map↔chart sync, replay scrubbing) remains planned: [ROADMAP.md](./ROADMAP.md).
 
 ---
 
@@ -50,6 +52,8 @@ Goal deficit expected behavior: values up to **70 kcal/kg fat** should save succ
 | Mobile ESLint errors | Mobile | Open | ~31 error (pre-existing); `bundle:check` OK |
 | Mobile Jest navigation suites | Mobile tests | Open | Часть suites fail в RN env; unit-тесты analytics/engine — отдельно |
 | HR graph manual point editing | Workout HR graph editor | Low / Open | Do not use manual HR point editing; graph display/import works |
+| ~~Strength HR block editing crash / infinite loading~~ | Strength session HR chart editor | **Fixed (2026-06-09)** | Block click opens inspector safely; invalid blocks skipped with message |
+| ~~Route point popup shows timestamp only~~ | Cardio map (`BikeGpsMap`, `RoutePointTelemetry`) | Fixed | Running and cycling tooltips now merge sensors/HR and derive GPS speed via `merge_telemetry_into_track_points` (backend) + `enrichTrackPoints` (frontend) |
 
 ---
 
@@ -59,6 +63,52 @@ Goal deficit expected behavior: values up to **70 kcal/kg fat** should save succ
 |----------|-----|--------|
 | Рассинхрон текстов/лейблов | Desktop/Mobile | Open |
 | Разная детализация статусов | Settings / sync / HC | Open |
+
+---
+
+## UI / Integrations
+
+### Integration Status Indicators Use Inconsistent Logic
+
+**Priority:** Low (P3)  
+**Area:** Settings → Connections
+
+The Connections page currently uses inconsistent status logic across integrations.
+
+Observed examples:
+
+- Health Connect displays "Connected" on desktop even though Health Connect is Android-only and unavailable on desktop.
+- Google Fit displays "Connected" while the action button still shows "Coming Soon".
+- Polar Flow displays "Connected" based on actual integration state.
+- Yandex Disk displays "Connected" based on OAuth status.
+- FormaSync displays "OK" instead of using the same status terminology as other integrations.
+- FIT / GPX displays "Folder Configured" rather than a standardized connection state.
+
+As a result, users may incorrectly assume that all integrations are active and authenticated.
+
+Impact:
+
+- UI / UX issue only.
+- Does not affect synchronization logic.
+- Does not affect OAuth authentication.
+- Does not affect user data.
+- Does not block release readiness.
+
+Expected behavior:
+
+All integrations should use a unified status model. Suggested statuses:
+
+- Not Connected
+- Connected
+- Requires Setup
+- Unavailable On This Platform
+- Coming Soon
+
+Status should be derived from actual integration state rather than hardcoded labels.
+
+Workaround: users can verify actual integration availability through the corresponding setup dialogs and synchronization logs.
+
+Release impact: non-blocking. May be fixed in a future UI cleanup pass.
 
 ---
 
@@ -115,9 +165,12 @@ Goal deficit expected behavior: values up to **70 kcal/kg fat** should save succ
 
 | Issue | Notes |
 |-------|-------|
-| Schema migrations | Auto on startup; `SCHEMA_VERSION` **74**; `%APPDATA%\Forma` repair |
+| Schema migrations | Auto on startup; Public `SCHEMA_VERSION` **80**; Dev is still **79** and not fully schema-equivalent yet; `%APPDATA%\Forma` repair |
+| Dev/Public migration numbering not reconciled in code | Cross-repo migration history | Public v078/v079/v080 map to Dev missing/v078/v079; do not renumber existing migrations |
 | No electron-updater | Ручная переустановка |
-| Packaged API port | Default **18002** |
+| Packaged API port | Default **8000**; candidates **8000–8012**; config `%APPDATA%\Forma\forma-desktop-api.json` |
+| Clean install OAuth | Google/Yandex PKCE works with public template only; Polar needs user-added secret — [AUTH_PKCE_AUDIT.md](./AUTH_PKCE_AUDIT.md) |
+| Documentation drift | Some archive docs still cite port 18002 — use active docs / AUTH_PKCE_AUDIT |
 | Cold UI после импорта | **Настройки → Бэкап → Прогрев данных** |
 | Удалённые legacy routes | Только redirect — не восстанавливать как страницы |
 | **Resolved:** body history cramped @1680 | History always below chart; collapsible row |

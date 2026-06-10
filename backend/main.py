@@ -42,7 +42,17 @@ if not logger.handlers:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.core.env import google_oauth_configured, load_project_env, yandex_oauth_configured
+from backend.core.env import (
+    google_oauth_configured,
+    google_oauth_flow_mode,
+    google_oauth_ready,
+    load_project_env,
+    off_contribute_ready,
+    polar_oauth_configured,
+    polar_oauth_ready,
+    yandex_oauth_configured,
+    yandex_oauth_ready,
+)
 
 _env_path = load_project_env()
 
@@ -376,68 +386,56 @@ def health_check():
 
 
 @app.on_event("startup")
-def on_startup_db_schema():
-    """Схема БД должна быть готова до cloud backup/sync и остальных startup-хуков."""
-    forma_dir = os.environ.get("FORMA_DATA_DIR", "").strip()
-    if forma_dir:
-        logger.info("[API] FORMA_DATA_DIR=%s (workouts.db may be shared with Forma.exe)", forma_dir)
-        logger.warning(
-            "[API] If Forma.exe is open on the same database, expect 'database is locked' on import/sync. "
-            "Use separate FORMA_DATA_DIR for dev or close packaged app."
-        )
-    try:
-        from database.migrations import ensure_all_exercises_catalog, ensure_db_schema
-
-        ensure_db_schema()
-    except Exception as err:
-        logger.warning("[API] ensure_db_schema: %s", err)
-        try:
-            from database.migrations import ensure_all_exercises_catalog
-
-            ensure_all_exercises_catalog()
-            logger.info("[API] all_exercises catalog ensured after schema error")
-        except Exception as cat_err:
-            logger.error("[API] ensure_all_exercises_catalog: %s", cat_err)
-            return
-    try:
-        from backend.database.db_utils import repair_forma_sync_tracking, repair_shared_schema
-
-        repair_forma_sync_tracking()
-        repair_shared_schema()
-    except Exception as err:
-        logger.warning("[API] repair_shared_schema: %s", err)
-    try:
-        from backend.services.database_import_tasks import clear_stale_import_lock
-
-        if clear_stale_import_lock(log=logger):
-            logger.info("[API] cleared stale database import lock from previous run")
-    except Exception as err:
-        logger.warning("[API] import lock cleanup: %s", err)
-    try:
-        from backend.services import food_service
-
-        n = food_service.ensure_products_catalog()
-        if n:
-            logger.info("food_products: %s записей в справочнике", n)
-    except Exception as err:
-        logger.warning("[API] food products auto-import: %s", err)
-    logger.info("[API] startup complete — API ready")
-
-
-@app.on_event("startup")
 def on_startup_log_env():
     if _env_path:
         logger.info("[API] .env loaded from %s", _env_path)
     else:
         logger.warning("[API] .env not found (expected at %s)", ROOT / ".env")
-    if yandex_oauth_configured():
-        logger.info("[API] Yandex Disk OAuth: configured")
+    from backend.core.env import yandex_oauth_flow_mode
+
+    if yandex_oauth_ready():
+        flow = yandex_oauth_flow_mode()
+        logger.info("[API] Yandex Disk OAuth: ready (%s)", flow)
+    elif yandex_oauth_configured():
+        flow = yandex_oauth_flow_mode()
+        if flow == "confidential":
+            logger.warning(
+                "[API] Yandex Disk OAuth: confidential flow configured but YANDEX_CLIENT_SECRET missing"
+            )
+        else:
+            logger.warning(
+                "[API] Yandex Disk OAuth: client_id present but redirect URI not configured"
+            )
     else:
-        logger.warning("[API] Yandex Disk OAuth: YANDEX_CLIENT_ID missing in .env")
-    if google_oauth_configured():
-        logger.info("[API] Google Drive OAuth: configured")
+        logger.info("[API] Yandex Disk OAuth: not configured (optional)")
+    if google_oauth_ready():
+        gflow = google_oauth_flow_mode()
+        logger.info("[API] Google Drive OAuth: ready (%s)", gflow)
+    elif google_oauth_configured():
+        gflow = google_oauth_flow_mode()
+        if gflow == "confidential":
+            logger.warning(
+                "[API] Google Drive OAuth: confidential flow configured but GOOGLE_CLIENT_SECRET missing"
+            )
+        else:
+            logger.warning(
+                "[API] Google Drive OAuth: client_id present but redirect URI not configured"
+            )
     else:
-        logger.warning("[API] Google Drive OAuth: GOOGLE_CLIENT_ID missing in .env")
+        logger.info("[API] Google Drive OAuth: not configured (optional)")
+    if polar_oauth_ready():
+        logger.info("[API] Polar OAuth: ready")
+    elif polar_oauth_configured():
+        logger.warning(
+            "[API] Polar OAuth: client_id present but POLAR_CLIENT_SECRET missing — "
+            "Polar sign-in disabled until secret is set in local .env"
+        )
+    else:
+        logger.info("[API] Polar OAuth: not configured (optional)")
+    if off_contribute_ready():
+        logger.info("[API] Open Food Facts contribute: configured")
+    else:
+        logger.info("[API] Open Food Facts contribute: not configured (optional)")
 
 
 @app.on_event("startup")
@@ -496,6 +494,57 @@ def on_shutdown_local_backup_scheduler():
         stop_local_backup_scheduler()
     except Exception as err:
         logger.warning("[API] local backup scheduler shutdown: %s", err)
+
+
+@app.on_event("startup")
+def on_startup():
+    """Схема БД актуальна перед запросами."""
+    import os
+
+    forma_dir = os.environ.get("FORMA_DATA_DIR", "").strip()
+    if forma_dir:
+        logger.info("[API] FORMA_DATA_DIR=%s (workouts.db may be shared with Forma.exe)", forma_dir)
+        logger.warning(
+            "[API] If Forma.exe is open on the same database, expect 'database is locked' on import/sync. "
+            "Use separate FORMA_DATA_DIR for dev or close packaged app."
+        )
+    try:
+        from database.migrations import ensure_all_exercises_catalog, ensure_db_schema
+
+        ensure_db_schema()
+    except Exception as err:
+        logger.warning("[API] ensure_db_schema: %s", err)
+        try:
+            from database.migrations import ensure_all_exercises_catalog
+
+            ensure_all_exercises_catalog()
+            logger.info("[API] strength exercise name catalog ensured after schema error")
+        except Exception as cat_err:
+            logger.error("[API] ensure_all_exercises_catalog: %s", cat_err)
+            return
+    try:
+        from backend.database.db_utils import repair_forma_sync_tracking, repair_shared_schema
+
+        repair_forma_sync_tracking()
+        repair_shared_schema()
+    except Exception as err:
+        logger.warning("[API] repair_shared_schema: %s", err)
+    try:
+        from backend.services.database_import_tasks import clear_stale_import_lock
+
+        if clear_stale_import_lock(log=logger):
+            logger.info("[API] cleared stale database import lock from previous run")
+    except Exception as err:
+        logger.warning("[API] import lock cleanup: %s", err)
+    try:
+        from backend.services import food_service
+
+        n = food_service.ensure_products_catalog()
+        if n:
+            logger.info("food_products: %s записей в справочнике", n)
+    except Exception as err:
+        logger.warning("[API] food products auto-import: %s", err)
+    logger.info("[API] startup complete — API ready")
 
 
 def _resolve_frontend_static_dir() -> Path | None:

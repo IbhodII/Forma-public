@@ -1,9 +1,9 @@
 import type { PlotParams } from "react-plotly.js";
 import type { BodyMetricRow } from "../../../types";
-import { sortRowsByDateAsc } from "../../../utils/bodyMetrics";
+import { BODY_METRIC_DECIMALS, sortRowsByDateAsc } from "../../../utils/bodyMetrics";
 import { chartDateLabel } from "../../Analytics/utils/chartDates";
 import { formatNumber } from "../../../utils/format";
-import { kgToJapanese } from "../../../utils/americanUnits";
+import { cmToDick, kgToJapanese } from "../../../utils/americanUnits";
 
 const COMPOSITION_KG_KEYS = new Set(["weight_kg", "muscle_mass_kg"]);
 const BODY_FAT_PERCENT_KEY = "body_fat_percent";
@@ -12,11 +12,19 @@ function kgToChartJp(kg: number): number {
   return Number(formatNumber(kgToJapanese(kg), 1));
 }
 
+function cmToChartDk(cm: number): number {
+  return Number(formatNumber(cmToDick(cm), 2));
+}
+
 function chartYValue(key: string, value: number, useAmerican: boolean): number {
   if (useAmerican && COMPOSITION_KG_KEYS.has(key)) {
     return kgToChartJp(value);
   }
-  return Math.round(value * 10) / 10;
+  if (useAmerican && key.endsWith("_cm")) {
+    return cmToChartDk(value);
+  }
+  const factor = 10 ** BODY_METRIC_DECIMALS;
+  return Math.round(value * factor) / factor;
 }
 
 function hexAlpha(hex: string, alpha: number): string {
@@ -68,8 +76,8 @@ export function buildBodyChartTraces(
       fillcolor: hexAlpha(line.color, 0.15),
       connectgaps: true,
       hovertemplate: isFatPercent
-        ? `${line.label}: %{y:.1f}%<extra></extra>`
-        : `${line.label}: %{y:.1f}<extra></extra>`,
+        ? `${line.label}: %{y:.2f}%<extra></extra>`
+        : `${line.label}: %{y:.2f}<extra></extra>`,
     });
   }
   return traces;

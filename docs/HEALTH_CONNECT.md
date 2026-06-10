@@ -4,7 +4,7 @@
 
 См. также: [MOBILE.md](./MOBILE.md), [FORMA_SYNC.md](./FORMA_SYNC.md), [DESKTOP_UI.md](./DESKTOP_UI.md), [ANALYTICS.md](./ANALYTICS.md). Аудит: [archive/HEALTH_CONNECT_AUDIT.md](./archive/HEALTH_CONNECT_AUDIT.md).
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -12,12 +12,12 @@ Last updated: **2026-06-05**.
 
 | Surface | Path | Содержание |
 |---------|------|------------|
-| HC hub | `/health-connect` | Steps, sleep, vitals, sync log, diagnostics |
-| Body hub | `/body?tab=health-connect` | HC card в контексте «Тело» |
+| HC hub (canonical) | `/body?tab=health-connect` | Steps, sleep, vitals, sync log, diagnostics (`HealthConnectHubContent`) |
+| Legacy redirect | `/health-connect` | Redirect → `/body?tab=health-connect` ([`legacyRedirects.ts`](../frontend/src/routes/legacyRedirects.ts)) |
 | Home | `/home` | Steps today, calories bridge, links → body/HC |
 | Body overview | `/body` (overview tab) | Мини-тренды шаги/сон/пульс → deep links |
 
-Guard: HC nav скрывается если `!enableHealthConnectNav` ([`clientCapabilities.ts`](../frontend/src/config/clientCapabilities.ts)).
+Отдельного пункта HC в sidebar нет. Dev diagnostics: Settings → Developer Tools → `HealthConnectDiagnosticsPanel` (не unrouted `HealthConnectDebugPage.tsx`).
 
 ---
 
@@ -128,11 +128,11 @@ Permissions: Android HC permission sheet on first collect; `permission_denied` p
 | Область | Статус |
 |---------|--------|
 | HC sync ingest (steps, weight, kcal, sleep, cardio) | **implemented** |
-| Production hub UI `/health-connect` | **implemented** |
+| Production hub UI `/body?tab=health-connect` | **implemented** |
 | Debug API + audit log (v50) | **implemented** |
 | Source routing + HC write block | **implemented** |
 | Dashboard `/home` tiles (steps, sleep) | **implemented** |
-| Dashboard `/health-connect` hub | **implemented** |
+| Legacy `/health-connect` redirect | **implemented** |
 | Mobile local SQLite (`hc_records`, `hc_day_metrics`) | **implemented** |
 | Mobile HC background collector (60 min) | **implemented** |
 | Mobile legacy POST to PC API | **implemented** (`legacy_api`) |
@@ -140,7 +140,8 @@ Permissions: Android HC permission sheet on first collect; `permission_denied` p
 | Mobile foreground + manual hub sync | **implemented** |
 | Bracelet kcal in expenditure/deficit | **partial** |
 | Sleep in recovery advice | **partial** |
-| Reliability scoring UI | **experimental** (backend only) |
+| Reliability scoring module | **removed** (was `health_connect_reliability.py`; see [archive/CLEANUP.md](./archive/CLEANUP.md)) |
+| Hub source routing display | **implemented** — [`health_connect_routing_rules.py`](../backend/services/health_connect_routing_rules.py) |
 | HRV / readiness recovery analytics | **planned** |
 | Full HC field catalog on `/analytics` | **planned** |
 | Sleep / HR / step provider validation | **open validation** |
@@ -296,7 +297,7 @@ flowchart LR
 |-------|------|------------|-----|
 | POST | `/api/sync/health-connect` | Batch по дням | Mobile sync |
 | GET | `/api/sync/health-connect/debug` | Raw diagnostics | Dev tools |
-| GET | `/api/sync/health-connect/hub` | Hub aggregate | `/health-connect` |
+| GET | `/api/sync/health-connect/hub` | Hub aggregate | `/body?tab=health-connect` |
 
 Роутер: [`backend/routers/sync.py`](../backend/routers/sync.py).
 
@@ -307,7 +308,7 @@ flowchart LR
 - [`health_connect_hub_service.py`](../backend/services/health_connect_hub_service.py) — hub view
 - [`health_connect_mapping.py`](../backend/services/health_connect_mapping.py) — field catalog
 - [`health_connect_audit.py`](../backend/services/health_connect_audit.py) — skip/save reasons
-- [`health_connect_reliability.py`](../backend/services/health_connect_reliability.py) — scoring (**partial**)
+- [`health_connect_routing_rules.py`](../backend/services/health_connect_routing_rules.py) — hub source routing labels
 
 ---
 
@@ -400,7 +401,8 @@ Exercise type examples: run (56), bike (8/9), swim (73/74) → `cardio_workouts.
 
 | Surface | Component | Status |
 |---------|-----------|--------|
-| `/health-connect` | `HealthConnectHubContent` | **production** hub |
+| `/body?tab=health-connect` | `HealthConnectHubContent` | **production** hub |
+| `/health-connect` | redirect only | legacy URL |
 | `/home` | Hero «Активность», «Сон»; status in integrations panel | **production** |
 | Settings → Dev Tools | `HealthConnectDiagnosticsPanel` | **experimental** raw JSON |
 | Mobile tab HC | `HcHubScreen`, `HcTrendsPanel` | **production** hub |

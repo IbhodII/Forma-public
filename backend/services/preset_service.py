@@ -490,18 +490,13 @@ def get_preset_exercises_for_name(name: str) -> list[dict[str, Any]]:
 
 
 def _save_exercises(conn, preset_id: int, exercises: list[dict[str, Any]]) -> None:
-    from datetime import datetime as _dt
+    from backend.services import exercise_catalog_service
 
-    # Регистрируем упражнения в справочнике через уже открытое соединение,
-    # чтобы избежать deadlock (второй writer на SQLite без WAL).
-    _now_ts = _dt.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    for ex in exercises:
-        ex_name = str(ex.get("exercise_name") or ex.get("exercise") or "").strip()
-        if ex_name:
-            conn.execute(
-                "INSERT OR IGNORE INTO all_exercises (name, created_at) VALUES (?, ?)",
-                (ex_name, _now_ts),
-            )
+    catalog_names = [
+        str(ex.get("exercise_name") or ex.get("exercise") or "").strip()
+        for ex in exercises
+    ]
+    exercise_catalog_service.ensure_exercises([n for n in catalog_names if n])
 
     uid = get_current_user_id()
     conn.execute(

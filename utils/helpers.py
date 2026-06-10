@@ -108,7 +108,8 @@ def get_last_exercise_stats(exercise: str, workout_title: str) -> tuple:
     last_date = d.iloc[0]["date"]
     sets_df = pd.read_sql_query(
         """
-        SELECT weight, reps FROM strength_workouts
+        SELECT weight, reps, duration_sec, COALESCE(is_bodyweight, 0) AS is_bodyweight
+        FROM strength_workouts
         WHERE exercise=? AND workout_title=? AND date=? AND COALESCE(is_warmup, 0) = 0
         ORDER BY set_number
         """,
@@ -118,6 +119,21 @@ def get_last_exercise_stats(exercise: str, workout_title: str) -> tuple:
     conn.close()
     if sets_df.empty:
         return None, None, None
+    from backend.services.preset_sets_utils import is_time_based_exercise
+
+    is_bw = bool(int(sets_df.iloc[0]["is_bodyweight"])) or is_time_based_exercise(exercise)
+    if is_bw:
+        durs: list[int] = []
+        for _, row in sets_df.iterrows():
+            dur = row.get("duration_sec")
+            if dur is not None and pd.notna(dur) and int(dur) > 0:
+                durs.append(int(dur))
+            else:
+                reps_val = int(row["reps"])
+                if reps_val > 1:
+                    durs.append(reps_val)
+        reps_str = format_reps(durs) if durs else None
+        return 0.0, reps_str if reps_str != "—" else None, last_date
     reps_str = format_reps(sets_df["reps"].tolist())
     return sets_df.iloc[0]["weight"], reps_str if reps_str != "—" else None, last_date
 

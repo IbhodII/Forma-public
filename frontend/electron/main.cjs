@@ -21,6 +21,43 @@ const EXTERNAL_API_PORT_FALLBACK = 8000;
 const PACKAGED_API_PORT_CANDIDATES = [8000, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012];
 const PACKAGED_API_PORT_DEFAULT = PACKAGED_API_PORT_CANDIDATES[0];
 
+/** Never persist developer secrets from packaged resources into userData. */
+const FORBIDDEN_DESKTOP_ENV_KEYS = new Set([
+  "YANDEX_CLIENT_SECRET",
+  "GOOGLE_CLIENT_SECRET",
+  "POLAR_CLIENT_SECRET",
+  "OFF_PASSWORD",
+  "OFF_USER_ID",
+]);
+
+function stripForbiddenEnvKeys(lines) {
+  const removed = [];
+  const out = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      out.push(line);
+      continue;
+    }
+    let body = trimmed;
+    if (body.toLowerCase().startsWith("export ")) {
+      body = body.slice(7).trim();
+    }
+    const eq = body.indexOf("=");
+    if (eq < 0) {
+      out.push(line);
+      continue;
+    }
+    const key = body.slice(0, eq).trim();
+    if (FORBIDDEN_DESKTOP_ENV_KEYS.has(key)) {
+      if (!removed.includes(key)) removed.push(key);
+      continue;
+    }
+    out.push(line);
+  }
+  return { lines: out, removed };
+}
+
 function getDesktopApiConfigPath() {
   return path.join(app.getPath("userData"), "forma-desktop-api.json");
 }
@@ -265,6 +302,14 @@ function syncPackagedDesktopEnv(port) {
     fs.copyFileSync(resourcesEnvPath, dataEnvPath);
   }
   let lines = readEnvFileLines(dataEnvPath);
+  const stripped = stripForbiddenEnvKeys(lines);
+  if (stripped.removed.length) {
+    lines = stripped.lines;
+    writeEnvFileLines(dataEnvPath, lines);
+    console.warn(
+      `[forma-env] Removed forbidden secret keys from desktop .env: ${stripped.removed.join(", ")}`,
+    );
+  }
   const host = "127.0.0.1";
   const publicBase = `http://${host}:${port}`;
   const yandexRedirect = `${publicBase}/api/cloud/callback/yandex`;
@@ -320,7 +365,7 @@ async function readOAuthPayloadFromPopup(webContents) {
       return { hasElement: true, text: el.textContent, payload: null, error: String(err) };
     }
   })()`;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 450; attempt += 1) {
     try {
       const result = await webContents.executeJavaScript(script, true);
       if (attempt === 0 || attempt === 10 || attempt === 30) {
@@ -354,7 +399,7 @@ async function readOAuthPayloadFromPopup(webContents) {
         oauthMainLog("oauth_payload_read_failed", String(err));
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
   return null;
 }
@@ -540,6 +585,13 @@ ipcMain.on("oauth-popup-complete", (event, message) => {
   const popupWin = BrowserWindow.fromWebContents(event.sender);
   const parentWin = popupWin ? oauthPopupParentByWindow.get(popupWin) : mainWindow;
   if (popupWin?.__oauthRelayed) return;
+  if (message?.url && !isOAuthCallbackUrl(message.url)) {
+    oauthMainLog("ignored_preload_on_non_callback", {
+      url: message.url,
+      reason: message?.reason || "preload",
+    });
+    return;
+  }
   if (!message?.payload || typeof message.payload !== "object") {
     oauthMainLog("ignored_empty_callback", {
       source_event: message?.reason || "preload",
@@ -1688,7 +1740,7 @@ ipcMain.handle("lan-server-enable", async () => {
     return {
       ok: false,
       message:
-        "Не найден start.ps1. Укажите путь: set FORMA_EXTERNAL_START_SCRIPT=C:\\Users\\brett\\Desktop\\MyHealthDashboard\\start.ps1",
+        "Не найден start.ps1. Укажите путь: set FORMA_EXTERNAL_START_SCRIPT=C:\\path\\to\\MyHealthDashboard\\start.ps1",
     };
   }
   const projectRoot = path.dirname(scriptPath);

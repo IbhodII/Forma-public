@@ -2,6 +2,7 @@ import type { BodyMetricsSummary } from "../../../api/body";
 import type { BodyMetricRow } from "../../../types";
 import {
   calcMetricDelta,
+  formatBodyMetricSigned,
   formatMetricNum,
   type BodyUnitsFormatProps,
 } from "../../../utils/bodyMetrics";
@@ -34,7 +35,9 @@ function DeltaLine({
   const sign = delta.diff > 0 ? "+" : "";
   const arrow = delta.diff > 0 ? "↑" : "↓";
   const tone = delta.improved ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400";
-  const diffText = formatDiff ? formatDiff(delta.diff) : `${sign}${delta.diff.toFixed(1)}`;
+  const diffText = formatDiff
+    ? formatDiff(delta.diff)
+    : formatBodyMetricSigned(delta.diff);
   return (
     <span className={`body-hero-metric__delta ${tone}`}>
       {arrow} {diffText} ({sign}
@@ -52,7 +55,8 @@ export function BodySummaryHero({
   chartRows: BodyMetricRow[];
   units: BodyUnitsFormatProps;
 }) {
-  const { formatBodyWeight, formatBarbellWeight, formatWeightChange, formatCircumference } = units;
+  const { formatBodyWeight, formatWeightChange, formatCircumference, formatCircumferenceChange } =
+    units;
   const m = summary?.metrics;
   const comp = deriveComposition(summary, null);
 
@@ -93,7 +97,7 @@ export function BodySummaryHero({
     {
       key: "muscle",
       label: "Мышцы",
-      value: m?.muscle_mass_kg ? formatBarbellWeight(m.muscle_mass_kg.value) : "—",
+      value: m?.muscle_mass_kg ? formatBodyWeight(m.muscle_mass_kg.value) : "—",
       sparkKey: "muscle_mass_kg",
       color: "#6366f1",
       delta: m?.muscle_mass_kg
@@ -144,7 +148,7 @@ export function BodySummaryHero({
                 delta={item.delta}
                 formatDiff={
                   item.key === "waist" || item.key === "hips"
-                    ? (d) => formatCircumference(d)
+                    ? formatCircumferenceChange
                     : item.key === "muscle"
                       ? formatWeightChange
                       : item.key === "fat"

@@ -12,6 +12,8 @@ from database.migrations import EXERCISE_SET_DEFAULT_FROM, _insert_exercise_set
 @pytest.fixture
 def catalog_db(tmp_path, monkeypatch):
     db_path = tmp_path / "workouts.db"
+    shared_path = tmp_path / "shared.db"
+    sqlite3.connect(shared_path).close()
     conn = sqlite3.connect(db_path)
     conn.executescript(
         """
@@ -49,6 +51,15 @@ def catalog_db(tmp_path, monkeypatch):
             exercise_name TEXT NOT NULL,
             user_id INTEGER NOT NULL
         );
+        CREATE TABLE user_strength_exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            exercise_category TEXT NOT NULL DEFAULT 'strength',
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT,
+            updated_at TEXT
+        );
         """
     )
     set_id = _insert_exercise_set(
@@ -63,11 +74,26 @@ def catalog_db(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
+    monkeypatch.setenv("FORMA_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("database.connection.DATA_ROOT", tmp_path)
     monkeypatch.setattr("database.connection.WORKOUTS_DB_PATH", db_path)
+    monkeypatch.setattr("database.connection.SHARED_DB_PATH", shared_path)
     monkeypatch.setattr("database.db_utils.DB_PATH", db_path)
 
+    from database.connection import open_db
+    from database.shared_schema import ensure_shared_schema
+
+    bootstrap = open_db(attach=True)
+    try:
+        ensure_shared_schema(bootstrap)
+        bootstrap.commit()
+    finally:
+        bootstrap.close()
+
     def _open():
-        return sqlite3.connect(db_path)
+        c = sqlite3.connect(db_path)
+        c.execute(f"ATTACH DATABASE ? AS shared", (str(shared_path),))
+        return c
 
     monkeypatch.setattr("backend.database.get_db", _open)
     yield db_path

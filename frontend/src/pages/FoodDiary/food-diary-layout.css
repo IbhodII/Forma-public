@@ -255,6 +255,70 @@
     0 0 16px rgb(var(--app-accent) / 0.18);
 }
 
+.food-expenditure-forecast {
+  border-radius: 0.65rem;
+  border: 1px dashed rgb(139 92 246 / 0.55);
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 0.1),
+    rgb(var(--app-surface-subtle) / 0.35) 58%
+  );
+  padding: 0.45rem 0.55rem;
+}
+
+.dark .food-expenditure-forecast {
+  border-color: rgb(167 139 250 / 0.5);
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 0.18),
+    rgb(var(--app-surface-subtle) / 0.5) 62%
+  );
+}
+
+.food-expenditure-forecast--compact {
+  padding: 0.35rem 0.45rem;
+}
+
+.food-expenditure-forecast__label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgb(109 40 217);
+}
+
+.dark .food-expenditure-forecast__label {
+  color: rgb(196 181 253);
+}
+
+.food-expenditure-forecast__value {
+  margin-top: 0.1rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: rgb(76 29 149);
+}
+
+.dark .food-expenditure-forecast__value {
+  color: rgb(221 214 254);
+}
+
+.food-expenditure-forecast__hint {
+  margin-top: 0.2rem;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: rgb(100 116 139);
+}
+
+.dark .food-expenditure-forecast__hint {
+  color: rgb(148 163 184);
+}
+
+.food-expenditure-forecast-panel {
+  border-color: rgb(139 92 246 / 0.35);
+  box-shadow: inset 0 0 0 1px rgb(139 92 246 / 0.08);
+}
+
 @media (min-width: 1200px) {
   .food-week-overview__track {
     display: grid;
@@ -279,6 +343,76 @@
   }
 }
 
+/* Meal / food diary modals — taller panels, less in-dialog scrolling */
+.meal-modal-panel {
+  /* Override ModalShell default max-h so meal dialogs use more viewport height */
+  max-height: min(92dvh, 900px) !important;
+}
+
+@media (max-width: 639px) {
+  .meal-modal-panel {
+    max-height: min(94dvh, 780px) !important;
+  }
+}
+
+/* Day details side drawer — wider on desktop for meal tables */
+.day-details-drawer {
+  width: min(100%, 36rem);
+}
+
+@media (min-width: 1024px) {
+  .day-details-drawer {
+    width: min(100%, 42rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .day-details-drawer {
+    width: min(100%, 48rem);
+  }
+}
+
+/* Meal plan editor — product rows */
+.meal-plan-product-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 5.5rem) auto;
+  gap: 0.5rem 0.75rem;
+  align-items: end;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(var(--app-border) / 0.45);
+}
+
+@media (max-width: 639px) {
+  .meal-plan-product-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Food entry modal — product line in batch add */
+.food-entry-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--app-radius-input);
+  background: rgb(var(--app-surface-muted));
+}
+
+@media (max-width: 639px) {
+  .food-entry-line {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
+.food-entry-line__qty {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 /* Day drawer — meal entry rows (long product names) */
 .food-day-meal-table {
   table-layout: fixed;
@@ -291,7 +425,7 @@
 }
 
 .food-day-meal-table col.food-day-meal-table__col-macro {
-  width: 2.25rem;
+  width: 2.75rem;
 }
 
 .food-day-meal-table col.food-day-meal-table__col-kcal {

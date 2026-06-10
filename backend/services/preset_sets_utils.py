@@ -10,7 +10,19 @@ _DEFAULT_REP = 8
 
 
 def is_plank_exercise(name: str) -> bool:
-    return "планк" in name.strip().lower().replace("ё", "е")
+    return is_time_based_exercise(name)
+
+
+def is_time_based_exercise(name: str) -> bool:
+    """Упражнения на время (планка и аналоги), не по названию веса."""
+    n = name.strip().lower().replace("ё", "е")
+    if "планк" in n:
+        return True
+    if re.search(r"\bplank\b", n):
+        return True
+    if "wall sit" in n or "hollow hold" in n:
+        return True
+    return False
 
 
 def parse_reps_tokens(raw: str | None) -> list[int]:

@@ -33,7 +33,8 @@ from backend.services.cloud_identity_service import fetch_google_identity, fetch
 from backend.services.cloud_storage_service import (
     YandexDiskService,
     _save_tokens_sync as save_yandex_tokens_sync,
-    take_yandex_oauth_state,
+    discard_yandex_oauth_state,
+    peek_yandex_oauth_client_mode,
 )
 from backend.services.oauth_popup_html import oauth_popup_html
 from backend.services.oauth_redirect import (
@@ -44,7 +45,8 @@ from backend.services.google_drive_service import (
     GoogleDriveService,
     _save_tokens_sync as save_google_tokens_sync,
     _expiry_iso,
-    _take_oauth_state,
+    discard_google_oauth_state,
+    peek_google_oauth_client_mode,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ def _yandex_oauth_error_message(error: str, redirect_uri: str | None = None) -> 
         "unauthorized_client": (
             "Приложение OAuth не разрешает запрошенные права. На oauth.yandex.ru откройте "
             "ваше приложение → «Доступ к данным» → включите «Яндекс.Диск» "
-            "(cloud_api:disk.read и cloud_api:disk.write)."
+            "(cloud_api:disk.app_folder)."
             + redirect_hint
             + " Если в приложении только «Яндекс ID», задайте в .env: YANDEX_OAUTH_MODE=login."
         ),
@@ -270,7 +272,7 @@ async def auth_yandex(
     link_user: int | None = Query(None, ge=1),
     redirect_base: str | None = Query(
         None,
-        description="Базовый URL API (например http://192.168.31.210:8000) для входа с телефона",
+        description="Базовый URL API (например http://192.168.x.x:8000) для входа с телефона",
     ),
     client_mode: str | None = Query(None, description="desktop_app | admin_browser | mobile_app"),
 ):
@@ -339,15 +341,13 @@ async def callback_yandex(
         bool(error),
     )
     if error:
-        try:
-            _link_user_id, stored_redirect, client_mode = take_yandex_oauth_state(state)
-        except Exception:
-            _link_user_id, stored_redirect, client_mode = None, oauth_redirect, None
+        client_mode = peek_yandex_oauth_client_mode(state)
+        discard_yandex_oauth_state(state)
+        stored_redirect = oauth_redirect
         logger.warning(
-            "oauth token_exchange_failed provider=yandex step=callback_error error=%s state=%s redirect_uri=%s",
+            "oauth token_exchange_failed provider=yandex step=callback_error error=%s state=%s",
             error,
             state,
-            stored_redirect,
         )
         return HTMLResponse(
             oauth_popup_html(
@@ -364,19 +364,25 @@ async def callback_yandex(
     try:
         import asyncio
 
-        link_user_id, oauth_redirect, client_mode = take_yandex_oauth_state(state)
-        logger.info("oauth oauth_state_validated provider=yandex link_user_id=%s", link_user_id)
         logger.info("oauth oauth_code_extracted provider=yandex")
         logger.info(
-            "oauth token_exchange_started provider=yandex link_user_id=%s redirect_uri=%s client_mode=%s",
-            link_user_id,
-            oauth_redirect,
-            client_mode,
+            "oauth token_exchange_started provider=yandex state_present=%s",
+            bool(state),
         )
         token_data = await yandex_service.exchange_code_for_token(
             code,
+            state=state,
             persist=False,
-            redirect_uri=oauth_redirect,
+        )
+        link_user_id = token_data.get("link_user_id")
+        oauth_redirect = token_data.get("redirect_uri")
+        client_mode = token_data.get("client_mode")
+        logger.info(
+            "oauth oauth_state_validated provider=yandex link_user_id=%s redirect_uri=%s client_mode=%s flow=%s",
+            link_user_id,
+            oauth_redirect,
+            client_mode,
+            token_data.get("flow"),
         )
         logger.info("oauth token_exchange_success provider=yandex")
         identity = fetch_yandex_identity(token_data["access_token"])
@@ -503,14 +509,13 @@ async def callback_google(
 ):
     """Callback URL для Google OAuth."""
     if error:
-        pending = _take_oauth_state(state)
-        stored_redirect = (pending or {}).get("redirect_uri")
-        client_mode = (pending or {}).get("client_mode")
+        client_mode = peek_google_oauth_client_mode(state)
+        discard_google_oauth_state(state)
+        stored_redirect = None
         logger.warning(
-            "Google OAuth callback error: error=%s state=%s redirect_uri=%s",
+            "Google OAuth callback error: error=%s state=%s",
             error,
             state,
-            stored_redirect,
         )
         return HTMLResponse(
             oauth_popup_html(

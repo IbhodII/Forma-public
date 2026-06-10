@@ -7,6 +7,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from utils.constants import MAX_DEFICIT_PER_KG_FAT, MIN_DEFICIT_PER_KG_FAT
+
 router = APIRouter(tags=["nutrition"])
 
 
@@ -48,7 +50,9 @@ class DynamicForecastRequest(BaseModel):
     prefer_chest_workout: bool = True
     balance_period: Literal["previous_week", "rolling_7", "rolling_14"] = "rolling_14"
     persist_plan: bool = False
-    max_deficit_per_kg_fat: float | None = Field(None, ge=5, le=60)
+    max_deficit_per_kg_fat: float | None = Field(
+        None, ge=MIN_DEFICIT_PER_KG_FAT, le=MAX_DEFICIT_PER_KG_FAT
+    )
 
 
 def _serialize_forecast(data: dict[str, Any]) -> dict[str, Any]:

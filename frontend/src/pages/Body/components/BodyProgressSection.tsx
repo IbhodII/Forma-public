@@ -28,6 +28,14 @@ function compositionChartLines(useAmerican: boolean) {
   });
 }
 
+function circumferenceChartLines(useAmerican: boolean) {
+  if (!useAmerican) return BODY_CIRCUMFERENCE_CHART_LINES;
+  return BODY_CIRCUMFERENCE_CHART_LINES.map((line) => ({
+    ...line,
+    label: line.label.replace(", см", ", Dk"),
+  }));
+}
+
 function LineToggles({
   lines,
   active,
@@ -118,6 +126,10 @@ export function BodyProgressSection({
     () => compositionChartLines(useAmerican),
     [useAmerican],
   );
+  const circumferenceLines = useMemo(
+    () => circumferenceChartLines(useAmerican),
+    [useAmerican],
+  );
 
   const [tab, setTab] = useState<ProgressTab>("composition");
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -187,11 +199,11 @@ export function BodyProgressSection({
       ...BODY_CHART_LAYOUT,
       yaxis: {
         ...BODY_CHART_LAYOUT.yaxis,
-        title: { text: "см" },
-        tickformat: ".1f",
+        title: { text: useAmerican ? "Dk" : "см" },
+        tickformat: ".2f",
       },
     }),
-    [],
+    [useAmerican],
   );
 
   const periodTabs = (
@@ -242,7 +254,7 @@ export function BodyProgressSection({
 
   const traces = tab === "composition" ? compTraces : circTraces;
   const layout = tab === "composition" ? compositionLayout : circLayout;
-  const lineDefs = tab === "composition" ? compositionLines : BODY_CIRCUMFERENCE_CHART_LINES;
+  const lineDefs = tab === "composition" ? compositionLines : circumferenceLines;
   const active = tab === "composition" ? compActive : circActive;
   const setActive = tab === "composition" ? setCompActive : setCircActive;
 

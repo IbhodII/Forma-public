@@ -6,6 +6,7 @@ import { CUT_BALANCE_PERIOD_LABEL } from "./balancePeriod";
 import { formatDateRu } from "../../../utils/format";
 import { parseApiError } from "../../../utils/validation";
 import { useUnits } from "../../../hooks/useUnits";
+import { MAX_DEFICIT_PER_KG_FAT, MIN_DEFICIT_PER_KG_FAT } from "./deficitLimits";
 import { useCutDeficitControl } from "./useCutDeficitControl";
 
 function StatusNote({
@@ -44,18 +45,19 @@ export function CutDeficitLimitField({
   control?: ReturnType<typeof useCutDeficitControl>;
   className?: string;
 }) {
+  const { deficitPerKgFatUnit } = useUnits();
   const internal = useCutDeficitControl(preferChest);
   const { maxDeficit, setMaxDeficit, persistLimit } = control ?? internal;
 
   return (
     <label className={cn("goal-projection-field text-xs min-w-0", className)}>
       <span className="goal-projection-field__label goal-projection-field__label--nowrap">
-        Лимит, ккал/кг жира
+        Лимит, {deficitPerKgFatUnit}
       </span>
       <input
         type="number"
-        min={5}
-        max={60}
+        min={MIN_DEFICIT_PER_KG_FAT}
+        max={MAX_DEFICIT_PER_KG_FAT}
         step={1}
         value={maxDeficit}
         onChange={(e) => setMaxDeficit(Number(e.target.value))}
@@ -74,7 +76,7 @@ export function CutDeficitControlStats({
   preferChest?: boolean;
   control?: ReturnType<typeof useCutDeficitControl>;
 }) {
-  const { formatEnergy } = useUnits();
+  const { formatEnergy, formatDeficitPerKgFatValue, deficitPerKgFatUnit } = useUnits();
   const internal = useCutDeficitControl(preferChest);
   const { maxDeficit, controlQuery, data, realPerKg, realKcal } = control ?? internal;
 
@@ -117,14 +119,16 @@ export function CutDeficitControlStats({
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-[rgb(var(--app-text-muted))]">Факт, ккал/кг</p>
+              <p className="text-[10px] text-[rgb(var(--app-text-muted))]">Факт, {deficitPerKgFatUnit}</p>
               <p className="font-semibold tabular-nums">
-                {Number.isFinite(realPerKg) ? realPerKg!.toFixed(1) : "—"}
+                {Number.isFinite(realPerKg) ? formatDeficitPerKgFatValue(realPerKg!) : "—"}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-[rgb(var(--app-text-muted))]">План, ккал/кг</p>
-              <p className="font-semibold tabular-nums text-[rgb(var(--app-text-muted))]">{maxDeficit}</p>
+              <p className="text-[10px] text-[rgb(var(--app-text-muted))]">План, {deficitPerKgFatUnit}</p>
+              <p className="font-semibold tabular-nums text-[rgb(var(--app-text-muted))]">
+                {formatDeficitPerKgFatValue(maxDeficit)}
+              </p>
             </div>
             {data.fat_kg != null && (
               <div>

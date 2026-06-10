@@ -27,8 +27,6 @@ const DISMISS_DEEP_LINK_WAIT_MS = 15_000;
 
 const YANDEX_SCOPES = [
   'cloud_api:disk.app_folder',
-  'cloud_api:disk.read',
-  'cloud_api:disk.write',
 ];
 
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/drive.file'];

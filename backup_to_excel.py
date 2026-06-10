@@ -39,7 +39,7 @@ _METRIC_HEADERS: tuple[tuple[str, str], ...] = (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = SCRIPT_DIR / "workouts.db"
-BACKUP_DIR = Path(r"C:\Users\brett\Desktop\Дневник тренировокъ\Резервные копии")
+BACKUP_DIR = SCRIPT_DIR / "backups"
 LAST_BACKUP_MARKER = BACKUP_DIR / "last_backup.txt"
 BACKUP_INTERVAL_DAYS = 7
 

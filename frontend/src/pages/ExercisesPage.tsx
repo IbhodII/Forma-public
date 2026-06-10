@@ -452,11 +452,18 @@ function ExerciseWorkoutTypeBlock({
     if (!n || composition.includes(n)) return;
     setTemplateBlocks((prev) => {
       const row = newWorkoutApproach(useAmerican, { exercise: n });
-      if (!prev.length) return [newWorkoutBlock(useAmerican, "normal", { approaches: [row] })];
-      const copy = [...prev];
-      const last = copy[copy.length - 1];
-      copy[copy.length - 1] = { ...last, approaches: [...last.approaches, row] };
-      return copy;
+      const onlyEmpty =
+        prev.length === 1 &&
+        prev[0].type === "normal" &&
+        prev[0].approaches.length === 1 &&
+        !prev[0].approaches[0].exercise.trim();
+      if (!prev.length || onlyEmpty) {
+        return [newWorkoutBlock(useAmerican, "normal", { approaches: [row] })];
+      }
+      return [
+        ...prev,
+        newWorkoutBlock(useAmerican, "normal", { approaches: [row] }),
+      ];
     });
   };
 
@@ -882,23 +889,31 @@ function CatalogPanel({
                     Добавить
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="rounded-lg border border-[rgb(var(--app-border)/0.75)] px-2 py-1 text-xs font-medium text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))]"
-                  onClick={() => {
-                    setEditingExercise(ex);
-                    setEditName(name);
-                  }}
-                >
-                  Редактировать
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                  onClick={() => setDeleteExercise(ex)}
-                >
-                  Удалить
-                </button>
+                {ex.is_shared ? (
+                  <span className="rounded-lg border border-[rgb(var(--app-border)/0.5)] px-2 py-1 text-xs text-[rgb(var(--app-text-muted))]">
+                    Общий каталог
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-[rgb(var(--app-border)/0.75)] px-2 py-1 text-xs font-medium text-[rgb(var(--app-text-muted))] hover:bg-[rgb(var(--app-surface-subtle))]"
+                      onClick={() => {
+                        setEditingExercise(ex);
+                        setEditName(name);
+                      }}
+                    >
+                      Редактировать
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                      onClick={() => setDeleteExercise(ex)}
+                    >
+                      Удалить
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );

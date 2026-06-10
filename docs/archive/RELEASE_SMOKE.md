@@ -1,6 +1,6 @@
 # Release smoke test (daily-driver)
 
-> **Актуальный чеклист desktop EXE:** [../RELEASE_READINESS.md](../RELEASE_READINESS.md) (2026-06-02).  
+> **Archived.** Актуальный чеклист: [../RELEASE_READINESS.md](../RELEASE_READINESS.md). API port **18002** references below are historical — use **8000**.  
 > Этот файл — расширенный historical smoke (desktop + mobile).
 
 Consolidated checklist for packaged **Forma.exe** and **Android release APK**. See also [DESKTOP_DEV_COEXISTENCE.md](DESKTOP_DEV_COEXISTENCE.md), [mobile/RELEASE_CHECKLIST.md](../../mobile/RELEASE_CHECKLIST.md), [FORMA_SYNC.md](../FORMA_SYNC.md), [DATA_BACKUP.md](DATA_BACKUP.md).

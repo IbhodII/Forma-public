@@ -146,6 +146,7 @@ def list_exercises(*, muscle_group: str | None = None) -> list[dict[str, Any]]:
                 SELECT {_EXERCISE_COLUMNS}
                 FROM shared.stretching_exercises
                 WHERE target_muscle_group LIKE ?
+                  AND COALESCE(exercise_category, 'stretching') = 'stretching'
                 ORDER BY name COLLATE NOCASE
                 """,
                 (f"%{muscle_group.strip()}%",),
@@ -155,6 +156,7 @@ def list_exercises(*, muscle_group: str | None = None) -> list[dict[str, Any]]:
                 f"""
                 SELECT {_EXERCISE_COLUMNS}
                 FROM shared.stretching_exercises
+                WHERE COALESCE(exercise_category, 'stretching') = 'stretching'
                 ORDER BY name COLLATE NOCASE
                 """
             ).fetchall()
@@ -200,8 +202,9 @@ def create_exercise(
         cur = conn.execute(
             """
             INSERT INTO shared.stretching_exercises
-            (name, target_muscle_group, description, images_json, translated, description_translated)
-            VALUES (?, ?, ?, ?, 1, 1)
+            (name, target_muscle_group, description, images_json, translated,
+             description_translated, exercise_category)
+            VALUES (?, ?, ?, ?, 1, 1, 'stretching')
             """,
             (
                 title,

@@ -317,6 +317,24 @@ function Wait-HttpReady([string]$Url, [int]$TimeoutSec = 45) {
     return $false
 }
 
+function Clear-StaleDatabaseImportLock {
+    try {
+        $code = @"
+from backend.services.database_import_tasks import clear_stale_import_lock, is_database_import_in_progress
+import logging
+log = logging.getLogger('start')
+clear_stale_import_lock(log=log)
+is_database_import_in_progress()
+"@
+        & $Python -c $code 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Info "Checked database import lock (stale locks cleared if needed)."
+        }
+    } catch {
+        Write-Warn "Could not check database import lock: $_"
+    }
+}
+
 function Show-ApiLogTail([int]$Lines = 24) {
     $logPath = Join-Path $Root "backend\logs\api.log"
     if (-not (Test-Path -LiteralPath $logPath)) {
@@ -432,10 +450,45 @@ if ($Stop) {
     exit 0
 }
 
+function Ensure-DevBootstrap {
+    $venvDir = Join-Path $Root "venv"
+    if (-not (Test-Path $Python)) {
+        Write-Info "First-time setup: creating Python venv..."
+        $py = Get-Command py -ErrorAction SilentlyContinue
+        if ($py) {
+            & py -3.12 -m venv $venvDir 2>$null
+            if ($LASTEXITCODE -ne 0) { & py -3 -m venv $venvDir }
+        } else {
+            $python = Get-Command python -ErrorAction SilentlyContinue
+            if (-not $python) {
+                Write-Host "Python not found. Install Python 3.11+ from https://www.python.org/" -ForegroundColor Red
+                exit 1
+            }
+            & python -m venv $venvDir
+        }
+        if (-not (Test-Path $Python)) {
+            Write-Host "Failed to create venv at $venvDir" -ForegroundColor Red
+            Write-Host "Run manually: py -3.12 -m venv venv" -ForegroundColor Yellow
+            Write-Host "Then: .\start.ps1 -Install" -ForegroundColor Yellow
+            exit 1
+        }
+        $script:Install = $true
+        Write-Info "venv created. Installing dependencies..."
+    }
+    $envExample = Join-Path $Root ".env.example"
+    $envFile = Join-Path $Root ".env"
+    if (-not (Test-Path $envFile) -and (Test-Path $envExample)) {
+        Copy-Item $envExample $envFile
+        Write-Info "Created .env from .env.example (edit for OAuth if needed)."
+    }
+}
+
+Ensure-DevBootstrap
+
 if (-not (Test-Path $Python)) {
     Write-Host "venv not found: $Python" -ForegroundColor Red
     Write-Host "Run: py -3.12 -m venv venv" -ForegroundColor Yellow
-    Write-Host "Then: .\venv\Scripts\pip install -r backend/requirements.txt" -ForegroundColor Yellow
+    Write-Host "Then: .\start.ps1 -Install" -ForegroundColor Yellow
     exit 1
 }
 
@@ -444,13 +497,37 @@ if (-not (Test-Path (Join-Path $Root "backend/main.py"))) {
     exit 1
 }
 
-& $Python -c "import uvicorn" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "uvicorn missing. Run: .\venv\Scripts\pip install -r backend/requirements.txt" -ForegroundColor Red
-    exit 1
+function Install-PythonDeps {
+    $pip = Join-Path $Root "venv/Scripts/pip.exe"
+    $reqFiles = @(
+        (Join-Path $Root "requirements.txt"),
+        (Join-Path $Root "backend/requirements.txt")
+    )
+    foreach ($req in $reqFiles) {
+        if (-not (Test-Path $req)) { continue }
+        Write-Info "pip install -r $req ..."
+        & $pip install -r $req
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "pip install failed for $req (exit $LASTEXITCODE); trying individual extras..."
+            if ($req -like "*requirements.txt" -and $req -notlike "*backend*") {
+                & $pip install authlib openpyxl gspread oauth2client fitdecode gpxpy "pytcx>=0.3.0"
+            }
+        }
+    }
 }
 
 $npmCmd = Ensure-Npm
+
+if ($Install) {
+    Install-PythonDeps
+}
+
+& $Python -c "import backend.main" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Python deps missing (backend.main import failed)." -ForegroundColor Red
+    Write-Host "Run: .\start.ps1 -Install" -ForegroundColor Yellow
+    exit 1
+}
 
 if ($Install -or -not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
     Write-Info "npm install in frontend..."
@@ -460,6 +537,18 @@ if ($Install -or -not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
         if ($LASTEXITCODE -ne 0) { throw "npm install failed with code $LASTEXITCODE" }
     } finally {
         Pop-Location
+    }
+}
+
+function Ensure-DatabaseSchema {
+    Write-Info "Ensuring database schema (first run may take up to a minute)..."
+    $schemaCli = Join-Path $Root "scripts/ensure_db_schema_cli.py"
+    & $Python $schemaCli
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Database migration failed." -ForegroundColor Red
+        Write-Host "Try: .\start.ps1 -Stop" -ForegroundColor Yellow
+        Write-Host "Then delete workouts.db and shared.db in the project root and run start again." -ForegroundColor Yellow
+        exit 1
     }
 }
 
@@ -495,20 +584,17 @@ if (-not (Test-Path $LogsDir)) {
     New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 }
 
+Clear-StaleDatabaseImportLock
+
+if (-not $SkipApiStart) {
+    Ensure-DatabaseSchema
+}
+
 if (-not (Test-Path $UvicornDevScript)) {
     Write-Host "Missing $UvicornDevScript" -ForegroundColor Red
     exit 1
 }
 . $UvicornDevScript
-
-Write-Info "Applying database migrations (workouts.db + shared.db)..."
-& $Python -c "from database.migrations import ensure_db_schema; ensure_db_schema(); print('schema OK')"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Database migration failed. Stop other API/Electron processes and retry:" -ForegroundColor Red
-    Write-Host "  .\start.ps1 -Stop" -ForegroundColor Yellow
-    Write-Host "  .\venv\Scripts\python.exe -c `"from database.migrations import ensure_db_schema; ensure_db_schema()`"" -ForegroundColor Yellow
-    exit 1
-}
 
 if (-not $SkipApiStart) {
     Write-Info "Starting FastAPI on port $ApiPort (uvicorn --reload)..."

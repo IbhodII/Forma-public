@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { initClientCapabilities } from "./config/clientCapabilities";
+import { initNumberInputWheelGuard } from "./utils/preventNumberInputWheel";
 import { I18nProvider } from "./i18n";
 import { initThemeFromStorage, ThemeProvider } from "./contexts/ThemeContext";
 import "./index.css";
@@ -11,6 +12,7 @@ import "./styles/desktop-layout.css";
 
 initThemeFromStorage();
 initClientCapabilities();
+initNumberInputWheelGuard();
 
 const queryClient = new QueryClient({
   defaultOptions: {

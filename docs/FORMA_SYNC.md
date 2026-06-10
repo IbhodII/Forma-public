@@ -3,7 +3,7 @@
 FormaSync — инкрементный **local-first** sync через **Yandex Disk** (`app:/FormaSync/{yandex_uid}/`).  
 **Не** whole-DB backup (`FormaBackups/`) и **не** LAN `legacy_api` full sync.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -15,7 +15,7 @@ Last updated: **2026-06-05**.
 | **Legacy API** | Mobile `legacy_api` | `SyncService` + HC POST к ПК |
 | **Server cloud backup** | Desktop / mobile API | Legacy server-mediated `.db` → reconcile к `X-User-ID` |
 | **Native backup** | Android | `FormaBackups/*.db` (локальная замена без server reconcile) |
-| **Desktop ZIP import** | Desktop only | Полная замена/merge `workouts.db` + `shared.db` |
+| **Desktop ZIP import** | Desktop only | Полная замена/merge `workouts.db` + `shared.db` (shared = reference only after v079) |
 
 ---
 
@@ -33,6 +33,8 @@ Last updated: **2026-06-05**.
 
 **Backup/sync:** upload baseline → revision bump; download → SHA256 verify → `package_applier` → refresh caches (`syncAfterPackageApply` на mobile).
 
+**OAuth mode:** desktop Yandex login uses PKCE by default. Public app-folder builds can use `YANDEX_SCOPES=cloud_api:disk.app_folder` when the Yandex app is configured that way. FormaSync path remains `app:/FormaSync/{yandex_uid}/` from the Disk API user identity.
+
 **Ограничения:** conflict UI pilot (`food_entries`); raw HC records не sync entity; сеть/retry влияют на UX.
 
 **Диагностика:** pending counts, last error, last upload/download; не смешивать FormaSync errors с `legacy_api`.
@@ -43,29 +45,12 @@ Last updated: **2026-06-05**.
 
 ## FormaSync Cloud Contract v1
 
----
+### Desktop & mobile UI
 
-## Architecture overview
-
-| Principle | Behavior |
-|-----------|----------|
-| **Local-first** | Writes go to SQLite first; `sync_status=pending` until exported |
-| **Incremental** | JSONL lines in ZIP packages; manifest `revision` monotonic |
-| **Multi-device** | Same `yandex_uid` → same `app:/FormaSync/{uid}/` folder |
-| **Conflict** | LWW by `updated_at`; ties → `sync_conflicts` table |
-
-### Sync channels (priority mental model)
-
-| Channel | When | Data |
-|---------|------|------|
-| **FormaSync** | Cloud modes, desktop with Yandex | Entities in contract (food, workouts, `hc_days`, …) |
-| **Legacy LAN** | `legacy_api` mobile | Full `SyncService` + HC POST |
-| **HC POST only** | Legacy, no FormaSync | Batch days to `workouts.db` |
-| **FIT/Polar** | Desktop | Files → desktop DB (not FormaSync) |
-| **FormaBackups** | Manual | Whole `.db` ZIP |
-
-Desktop UI: [DESKTOP_UI.md](./DESKTOP_UI.md) → `?tab=sync` (`FormaSyncPanel`, progress overlay).  
-Mobile UI: **Sync** tab (`SyncHubScreen`).
+| Client | FormaSync panel | Source priority / other sync |
+|--------|-----------------|------------------------------|
+| Desktop | Settings → **Данные** → **Облако** (`/settings?tab=data&panel=cloud`) — `FormaSyncPanel` | Settings → **Синхронизация** (`?tab=sync`) — source priority only |
+| Mobile | Settings → Sync hub (`SyncHubScreen`) | Orchestrator + queue; see mobile modules below |
 
 ### Yandex OAuth
 
@@ -268,7 +253,7 @@ Exported only when `sync_meta` → `hc:module_enabled` = `'1'`.
 | `debug_plan` in API status | Yes (`X-Forma-Client: admin_browser`) | No | No |
 | Legacy FIT/GPX `POST /cloud/sync` | Admin settings | Hidden | Hidden |
 | Mobile `legacy_api` (PC Wi‑Fi API) | Dev/QA only | N/A | Hidden in release (`__DEV__` only) |
-| Coexistence with dev API | Uses ports 8000/8002 + Vite 5173 | Uses packaged API ~18002 | Independent |
+| Coexistence with dev API | Uses ports 8000/8002 + Vite 5173 | Packaged API default **8000** (candidates 8000–8012) | Independent |
 
 FormaSync is **not** LAN sync and **not** “main PC only”: all cloud-mode clients read/write the same Yandex folder keyed by `yandex_uid`. LAN/legacy_api are separate admin/dev paths.
 
@@ -306,6 +291,31 @@ REST: `GET/POST /api/cloud/forma-sync/*` (status, sync, upload, download, confli
 **hc_days import:** maps mobile HC day rollups to `steps_history`, `daily_bracelet_calories`, and sleep fields where present.
 
 Legacy whole-DB backup (`CloudStorageSection`) and LAN sync remain unchanged (admin browser only in production UI).
+
+### Database split vs FormaSync
+
+| File | FormaSync | Whole-DB backup / ZIP import |
+|------|-----------|------------------------------|
+| `workouts.db` | Incremental entities (workouts, food, body, prefs, …) | Cloud restore replaces this file |
+| `shared.db` | `food_products` entity only; catalogs otherwise local | ZIP import can replace; **not** in cloud restore |
+
+`shared.db` in production holds **reference data only** (v079/v080+): products, stretching/strength catalogs and bike lookups. Meal plans and user-scoped entities are in `workouts.db`. Do not publish dev `shared.db` or any `workouts.db` to GitHub — see [DATABASE.md § Public Repository Data Policy](./DATABASE.md#public-repository-data-policy).
+
+### Mobile client modules
+
+```
+mobile/src/sync/
+  FormaSyncEngine.ts       # Core export/import engine
+  syncOrchestrator.ts      # Unified legacy + FormaSync queue, banner state
+  syncQueue.ts             # Pending operation queue
+  baseline.ts / syncPlan.ts
+  exportBaselineChanges.ts
+  formaSyncAuth.ts / yandexFormaSyncApi.ts
+  syncAfterPackageApply.ts
+  pendingChanges.ts / localFirstWrite.ts
+```
+
+Desktop backend also includes `baseline.py`, `sync_plan.py`, `paths.py`, `manifest.py`, `entity_types.py`, `sync_state.py` under `backend/services/forma_sync/`.
 
 **First upload (baseline):** when remote `manifest.json` is missing but local DB has data and `last_seen_revision == 0`, clients export all active rows once (rev 1), without requiring `sync_status=pending` on legacy rows.
 

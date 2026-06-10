@@ -2,6 +2,17 @@
 
 Mobile and desktop are **separate client apps**. They share the Python backend API and `shared/i18n` only. Do not import `frontend/src` from `mobile/src` or vice versa.
 
+Last updated: **2026-06-09**.
+
+## Client modes (desktop)
+
+| Mode | Where | Packaging / OAuth |
+|------|-------|-------------------|
+| `admin_browser` | `start.ps1`, Vite dev | Developer Tools, OAuth debug UI, DB import |
+| `desktop_app` | Packaged Forma.exe | Public `.env.desktop.public` only; PKCE for Google/Yandex — [PACKAGING_SECRETS.md](./PACKAGING_SECRETS.md), [AUTH_PKCE_AUDIT.md](./AUTH_PKCE_AUDIT.md) |
+
+See [`frontend/src/config/clientCapabilities.ts`](../frontend/src/config/clientCapabilities.ts).
+
 ## Layer map
 
 | Layer | Mobile (`mobile/src`) | Desktop (`frontend/src`) | Shared |

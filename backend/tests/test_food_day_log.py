@@ -287,13 +287,11 @@ def test_apply_meal_plan_weekly_offset(food_db, monkeypatch):
     assert result["entries"][0]["quantity"] == pytest.approx(150.0, abs=0.1)
 
 
-def test_apply_meal_plan_range_normalizes_week_start(food_db, monkeypatch):
+def test_apply_meal_plan_range_uses_explicit_start_date(food_db, monkeypatch):
     from backend.core import week_calendar
     from backend.services import settings_service
 
-    week = [f"2026-05-{d:02d}" for d in range(23, 30)]
     monkeypatch.setattr(settings_service, "get_week_start_day", lambda: week_calendar.WEEKDAY_SAT)
-    monkeypatch.setattr(food_service, "week_dates_from_anchor", lambda _a: week)
     monkeypatch.setattr(food_service, "get_week_log", lambda *_a, **_k: {})
     monkeypatch.setattr(
         food_service,
@@ -335,12 +333,76 @@ def test_apply_meal_plan_range_normalizes_week_start(food_db, monkeypatch):
     result = food_service.apply_meal_plan_range(
         2,
         "2026-05-25",
-        "2026-05-29",
+        "2026-05-31",
         "cut",
-        overwrite=True,
+        overwrite=False,
     )
-    assert result["week_start"] == "2026-05-23"
+    assert result["week_start"] == "2026-05-25"
+    assert result["week_end"] == "2026-05-31"
+    assert len(result["days"]) == 7
     assert result["total_added"] >= 1
+
+
+def test_apply_meal_plan_range_merge_skips_duplicate_products(food_db, monkeypatch):
+    monkeypatch.setattr(food_service, "get_week_log", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        food_service,
+        "get_meal_plan",
+        lambda plan_id: {
+            "id": plan_id,
+            "name": "Day",
+            "phase": "cut",
+            "description": None,
+            "is_custom": True,
+            "is_weekly": False,
+            "days": [],
+            "templates": [],
+        },
+    )
+
+    conn = food_service.get_db()
+    try:
+        chicken_id, _rice_id = _insert_products(conn)
+        conn.execute(
+            """
+            INSERT INTO shared.daily_meal_plans
+            (id, name, phase, description, is_custom, is_weekly)
+            VALUES (3, 'День', 'cut', NULL, 1, 0)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO shared.meal_plan_items
+            (plan_id, day_offset, meal_type, product_id, quantity)
+            VALUES (3, 0, 'breakfast1', ?, 100)
+            """,
+            (chicken_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO food_entries
+            (date, phase, product_id, quantity, meal_type, user_id,
+             protein_per100, fat_per100, carbs_per100, calories_per100)
+            VALUES ('2026-05-28', 'cut', ?, 100, 'lunch', 1, 20, 1, 1, 100)
+            """,
+            (chicken_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    first = food_service.apply_meal_plan_range(3, "2026-05-28", "2026-05-28", "cut", overwrite=False)
+    second = food_service.apply_meal_plan_range(3, "2026-05-28", "2026-05-28", "cut", overwrite=False)
+    assert first["total_added"] == 1
+    assert second["total_added"] == 0
+    conn = food_service.get_db()
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM food_entries WHERE date = '2026-05-28' AND phase = 'cut'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 2
 
 
 def test_food_entries_delete_after_v047_drops_main_product_fk(tmp_path):

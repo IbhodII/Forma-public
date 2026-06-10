@@ -13,6 +13,13 @@ import { useConfirmClose } from "../../hooks/useConfirmClose";
 import { useUnits } from "../../hooks/useUnits";
 import { ModalShell } from "../../components/ui/modal";
 import { EditCompositeButton } from "./EditCompositeButton";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE,
+} from "./mealModalLayout";
+
+const FOOD_ENTRY_FORM_ID = "food-entry-form";
 
 export const MEAL_TYPE_OPTIONS: { value: MealType; label: string }[] = [
   { value: "breakfast1", label: "Завтрак 1" },
@@ -260,11 +267,33 @@ export function FoodEntryModal({
       onClose={requestClose}
       dismissOnOverlay={false}
       title={isEdit ? "Редактировать запись" : "Добавить приём пищи"}
-      size="md"
+      size={MEAL_MODAL_SIZE}
+      className={MEAL_MODAL_PANEL_CLASS}
+      footer={
+        <>
+          <button type="button" onClick={requestClose} className="btn-secondary sm:w-auto">
+            Отмена
+          </button>
+          <button
+            type="submit"
+            form={FOOD_ENTRY_FORM_ID}
+            disabled={isPending || (isEdit ? !productId : validLines.length === 0)}
+            className="btn-primary sm:w-auto"
+          >
+            {isPending
+              ? "Сохранение…"
+              : isEdit
+                ? "Сохранить"
+                : validLines.length <= 1
+                  ? "Добавить"
+                  : `Добавить ${validLines.length} поз.`}
+          </button>
+        </>
+      }
     >
         {formError && <ErrorAlert message={formError} />}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id={FOOD_ENTRY_FORM_ID} onSubmit={handleSubmit} className="space-y-4">
           <label className="text-sm block">
             Приём
             <select
@@ -298,7 +327,7 @@ export function FoodEntryModal({
                   autoComplete="off"
                 />
                 {listOpen && filtered.length > 0 && (
-                  <ul className="absolute z-10 left-0 right-0 mt-1 max-h-48 overflow-auto rounded-lg border shadow-lg bg-[rgb(var(--app-surface))] border-[rgb(var(--app-border))]">
+                  <ul className="absolute z-10 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border shadow-lg bg-[rgb(var(--app-surface))] border-[rgb(var(--app-border))]">
                     {filtered.map((p) => (
                       <li key={p.id} className="flex items-stretch">
                         <button
@@ -382,7 +411,7 @@ export function FoodEntryModal({
                   autoComplete="off"
                 />
                 {listOpen && filtered.length > 0 && (
-                  <ul className="absolute z-10 left-0 right-0 mt-1 max-h-48 overflow-auto rounded-lg border shadow-lg bg-[rgb(var(--app-surface))] border-[rgb(var(--app-border))]">
+                  <ul className="absolute z-10 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border shadow-lg bg-[rgb(var(--app-surface))] border-[rgb(var(--app-border))]">
                     {filtered.map((p) => (
                       <li key={p.id} className="flex items-stretch">
                         <button
@@ -415,38 +444,37 @@ export function FoodEntryModal({
                   <p className="text-sm font-medium">Список ({lines.length})</p>
                   <ul className="space-y-2">
                     {lines.map((line) => (
-                      <li
-                        key={line.key}
-                        className="flex flex-wrap items-center gap-2 border rounded-lg p-2 bg-[rgb(var(--app-surface-muted))]"
-                      >
-                        <span className="text-sm flex-1 min-w-[8rem]">
-                          {line.productName}
+                      <li key={line.key} className="food-entry-line">
+                        <span className="text-sm min-w-0">
+                          <span className="line-clamp-2">{line.productName}</span>
                           {line.isComposite && (
                             <span className="ml-1 text-xs text-brand-600">(блюдо)</span>
                           )}
                         </span>
-                        {line.isComposite && onEditComposite && (
-                          <EditCompositeButton
-                            onClick={() => {
-                              const product = products.find((p) => p.id === line.productId);
-                              if (product) onEditComposite(product);
-                            }}
-                          />
-                        )}
-                        <label className="text-xs flex items-center gap-1">
-                          г
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={line.quantity}
-                            onChange={(e) => updateLineQty(line.key, e.target.value)}
-                            className="input-field text-sm w-20 py-1"
-                          />
-                        </label>
+                        <div className="flex items-center gap-2 justify-end sm:justify-start">
+                          {line.isComposite && onEditComposite && (
+                            <EditCompositeButton
+                              onClick={() => {
+                                const product = products.find((p) => p.id === line.productId);
+                                if (product) onEditComposite(product);
+                              }}
+                            />
+                          )}
+                          <label className="food-entry-line__qty text-xs">
+                            г
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={line.quantity}
+                              onChange={(e) => updateLineQty(line.key, e.target.value)}
+                              className="input-field text-sm w-24 py-1"
+                            />
+                          </label>
+                        </div>
                         <button
                           type="button"
-                          className="btn-secondary text-xs py-1 sm:w-auto"
+                          className="btn-secondary text-xs py-1 sm:w-auto justify-self-end"
                           onClick={() => removeLine(line.key)}
                         >
                           Удалить
@@ -485,24 +513,6 @@ export function FoodEntryModal({
             />
           </label>
 
-          <div className="flex flex-col sm:flex-row gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={isPending || (isEdit ? !productId : validLines.length === 0)}
-              className="btn-primary sm:w-auto"
-            >
-              {isPending
-                ? "Сохранение…"
-                : isEdit
-                  ? "Сохранить"
-                  : validLines.length <= 1
-                    ? "Добавить"
-                    : `Добавить ${validLines.length} поз.`}
-            </button>
-            <button type="button" onClick={requestClose} className="btn-secondary sm:w-auto">
-              Отмена
-            </button>
-          </div>
         </form>
     </ModalShell>
     <ConfirmModal

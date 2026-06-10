@@ -5,7 +5,7 @@
 Проверка backend:
 
 ```powershell
-cd C:\Users\brett\Desktop\MyHealthDashboard
+cd C:\path\to\MyHealthDashboard
 .\venv\Scripts\python.exe -c "import backend.main; print('OK')"
 ```
 

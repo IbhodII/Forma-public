@@ -2,7 +2,7 @@
 
 Desktop UI Forma: browser dev (Vite) и packaged Electron. Состояние Desktop RC после responsive polish, workout blocks, catalog hygiene and OAuth fixes.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -14,7 +14,10 @@ Settings → **Данные**:
 |-------|-----------------|-------------|
 | **Резервные копии** | Создать ZIP + восстановить из ZIP | + scheduled folder backup |
 | **Импорт и экспорт** | FIT/GPX only | + DB import, JSON, mini DB (Developer Tools) |
+| **Облако** | FormaSync panel (`FormaSyncPanel`) | Same |
 | **Расширенное** | Скрыто | Admin или dev-tools toggle |
+
+**Синхронизация** (`?tab=sync`) — приоритет источников данных, не FormaSync. Ссылка на облако: `?tab=data&panel=cloud`.
 
 Автовход: `desktop_app` вызывает `POST /api/auth/desktop-login` при старте без сессии (`AuthContext`).
 
@@ -72,14 +75,14 @@ Settings → **Данные**:
 | `/body` | Тело (hub, см. ниже) |
 | `/food/*` | Питание |
 | `/analytics` | Аналитика |
-| `/health-connect` | HC hub (guard) |
+| `/health-connect` | Redirect → `/body?tab=health-connect` |
 | `/cycle` | Цикл (guard) |
 | `/settings` | Settings hub |
 | `/my-bike` | Bike |
 
 Legacy URLs → redirect только ([`legacyRedirects.ts`](../frontend/src/routes/legacyRedirects.ts)); удалённые page modules (`CardioPage`, `AnalyticsPage`, …) **не** монтируются.
 
-Sidebar: [`Layout.tsx`](../frontend/src/components/Layout.tsx) — HC tab скрывается если `!enableHealthConnectNav`.
+Sidebar: [`Layout.tsx`](../frontend/src/components/Layout.tsx) — отдельного пункта HC нет; hub доступен через вкладку **Тело → Health Connect**. Флаг `enableHealthConnectNav` в `clientCapabilities` не используется в sidebar.
 
 ---
 
@@ -96,7 +99,7 @@ Sidebar: [`Layout.tsx`](../frontend/src/components/Layout.tsx) — HC tab скр
 | `sleep` | Сон |
 | `pulse` | Пульс |
 | `activity` | Активность |
-| `health-connect` | HC summary (также `/health-connect`) |
+| `health-connect` | HC hub (`HealthConnectHubContent`); канонический URL `/body?tab=health-connect` |
 
 **Контрольные замеры (`metrics`):**
 
@@ -184,7 +187,7 @@ UI primitives: [`frontend/src/components/ui/`](../frontend/src/components/ui/).
 ## Electron
 
 - User data: `%APPDATA%\Forma`
-- Embedded API: `backend.exe`, порт по умолчанию **18002**
+- Embedded API: `backend.exe`, порт по умолчанию **8000** (candidates 8000–8012; `%APPDATA%\Forma\forma-desktop-api.json`)
 - Сборка: `cd frontend && npm run desktop:dist`
 - `npm run desktop:dev` — запуск Electron (нужен собранный `dist` или dev workflow)
 
@@ -194,7 +197,7 @@ Packaged desktop uses `client_mode=desktop_app` on `/api/cloud/auth/*` so the ca
 
 On first start, `%APPDATA%\Forma\.env` gets `YANDEX_REDIRECT_URI`, `GOOGLE_REDIRECT_URI`, and `PUBLIC_API_BASE_URL` aligned to the actual API port when missing or port-mismatched.
 
-Register the same callback URL in [oauth.yandex.ru](https://oauth.yandex.ru): `http://127.0.0.1:{port}/api/cloud/callback/yandex` (`127.0.0.1` ≠ `localhost`). Diagnostics: `GET /api/cloud/oauth-debug` (desktop + admin browser).
+Register the same callback URL in [oauth.yandex.ru](https://oauth.yandex.ru): `http://127.0.0.1:{port}/api/cloud/callback/yandex` (`127.0.0.1` ≠ `localhost`). OAuth debug UI: только **admin_browser** или Developer Tools (`enableOAuthDebug: false` в packaged app). API: `GET /api/cloud/oauth-debug` — доступен и в packaged build.
 
 ---
 

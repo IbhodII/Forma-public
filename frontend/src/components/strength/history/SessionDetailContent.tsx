@@ -105,9 +105,19 @@ function StrengthHrEditView({
 
   const saving = saveMutation.isPending || resetMutation.isPending;
   const [splitMode, setSplitMode] = useState(false);
+  const editReady = points.length > 0 && editor.blocks.length > 0;
 
   return (
     <div className="space-y-2">
+      {!editReady ? (
+        <p className="text-xs text-amber-800/90 dark:text-amber-200/90 rounded-md border border-amber-300/50 bg-amber-50/70 dark:bg-amber-950/20 px-2 py-1.5">
+          Нет пригодных блоков для редактирования на графике. Закройте редактор или обновите анализ
+          пульса.
+        </p>
+      ) : null}
+      {editor.warnings.length ? (
+        <p className="text-[11px] text-amber-800/90 dark:text-amber-200/90">{editor.warnings.join(" ")}</p>
+      ) : null}
       <StrengthHrGraphEditToolbar
         dirty={editor.dirty}
         saving={saving}
@@ -121,25 +131,35 @@ function StrengthHrEditView({
 
       <div className="grid gap-2 lg:grid-cols-[1fr_min(240px,32%)]">
         <div className="sticky top-2 z-10 min-h-[280px] rounded-lg border border-[rgb(var(--app-border)/0.4)] bg-[rgb(var(--app-surface))] p-1.5 shadow-sm ring-1 ring-[rgb(var(--app-accent)/0.25)]">
-          <EditableHeartRateChart
-            points={points}
-            axis={axis}
-            timeAxisSeconds={polarImport}
-            polarImport={polarImport}
-            blocks={editor.blocks}
-            selectedBlockId={editor.selectedBlockId}
-            splitMode={splitMode}
-            onSelectBlock={(blockId) => editor.dispatch({ type: "selectBlock", blockId })}
-            onClearSelection={() => editor.dispatch({ type: "clearSelection" })}
-            onMoveBoundary={(action) => editor.dispatch(action)}
-            onSplitAt={(blockId, atSec) => editor.dispatch({ type: "splitBlock", blockId, atSec })}
-          />
+          {editReady ? (
+            <EditableHeartRateChart
+              points={points}
+              axis={axis}
+              timeAxisSeconds={polarImport}
+              polarImport={polarImport}
+              blocks={editor.blocks}
+              selectedBlockId={editor.selectedBlockId}
+              splitMode={splitMode}
+              onSelectBlock={(blockId) => editor.dispatch({ type: "selectBlock", blockId })}
+              onClearSelection={() => editor.dispatch({ type: "clearSelection" })}
+              onMoveBoundary={(action) => editor.dispatch(action)}
+              onSplitAt={(blockId, atSec) => editor.dispatch({ type: "splitBlock", blockId, atSec })}
+            />
+          ) : (
+            <HeartRateChart
+              points={points}
+              axis={axis}
+              smoothWindow={polarImport ? 5 : 0}
+              timeAxisSeconds={polarImport}
+              tall
+            />
+          )}
         </div>
 
         <StrengthHrBlockInspector
           block={editor.selectedBlock}
           blocks={editor.blocks}
-          sets={analysis.sets}
+          sets={analysis.sets ?? []}
           splitMode={splitMode}
           onDispatch={editor.dispatch}
         />
@@ -148,7 +168,7 @@ function StrengthHrEditView({
       <StrengthHrBlockEditorPanel
         embedded
         blocks={editor.blocks}
-        sets={analysis.sets}
+        sets={analysis.sets ?? []}
         onDispatch={editor.dispatch}
       />
 
@@ -202,6 +222,11 @@ function StrengthHeartRatePanel({
   const analysisQuery = useStrengthHrAnalysis(date, workoutTitle, open && hasPoints);
   const analysis = analysisQuery.data;
   const showSetMapping = useShowSetMapping(analysis, manualMapping);
+  const canEnterGraphEdit = Boolean(
+    analysis?.detected_blocks?.length && hasPoints && !analysisQuery.isLoading,
+  );
+  const showHrLoader = hrQuery.isLoading && !hrQuery.data;
+  const showAnalysisLoader = analysisQuery.isLoading && !analysis && hasPoints;
 
   const verifyMutation = useMutation({
     mutationFn: () => verifyStrengthHrSessionMapping(date, workoutTitle),
@@ -223,11 +248,11 @@ function StrengthHeartRatePanel({
         >
           {open ? "Скрыть пульс" : "Пульс по подходам"}
         </button>
-        {open && analysis && analysis.detected_blocks.length > 0 && !editMode ? (
+        {open && canEnterGraphEdit && !editMode ? (
           <>
             <MappingStatusPill
-              mappingStatus={analysis.mapping_status}
-              overridesApplied={analysis.overrides_applied}
+              mappingStatus={analysis!.mapping_status}
+              overridesApplied={analysis!.overrides_applied}
             />
             <button
               type="button"
@@ -241,8 +266,8 @@ function StrengthHeartRatePanel({
       </div>
       {open ? (
         <div className="space-y-2">
-          {hrQuery.isLoading && <Loader label="Пульс…" compact />}
-          {hrQuery.isError && <ErrorAlert message={parseApiError(hrQuery.error)} />}
+          {showHrLoader ? <Loader label="Пульс…" compact /> : null}
+          {hrQuery.isError ? <ErrorAlert message={parseApiError(hrQuery.error)} /> : null}
 
           {hrQuery.isSuccess && (!hrQuery.data || hrQuery.data.points.length === 0) ? (
             <p className="text-xs text-[rgb(var(--app-text-muted))]">Нет данных пульса</p>
@@ -250,14 +275,12 @@ function StrengthHeartRatePanel({
 
           {hasPoints ? (
             <>
-              {analysisQuery.isLoading ? (
-                <Loader label="Анализ пульса…" compact />
-              ) : null}
+              {showAnalysisLoader ? <Loader label="Анализ пульса…" compact /> : null}
               {analysisQuery.isError ? (
                 <ErrorAlert message={parseApiError(analysisQuery.error)} />
               ) : null}
 
-              {editMode && analysis ? (
+              {editMode && analysis && hasPoints ? (
                 <StrengthHrEditView
                   date={date}
                   workoutTitle={workoutTitle}

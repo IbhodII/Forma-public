@@ -46,6 +46,7 @@ SHARED_TABLES: frozenset[str] = frozenset(
         "food_products",
         "food_product_components",
         "stretching_exercises",
+        "strength_exercises",
         "tire_coefficients",
         "surface_multipliers",
     }
@@ -55,6 +56,7 @@ SHARED_TABLES: frozenset[str] = frozenset(
 _SHARED_COPY_PARENTS = (
     "food_products",
     "stretching_exercises",
+    "strength_exercises",
     "tire_coefficients",
     "surface_multipliers",
 )

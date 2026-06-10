@@ -4,7 +4,7 @@
 
 См. также: [PLATFORMS.md](./PLATFORMS.md), [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md), [WORKOUTS.md](./WORKOUTS.md), [NUTRITION.md](./NUTRITION.md).
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -18,6 +18,7 @@ Last updated: **2026-06-05**.
 | **Sync** | FormaSync foundation implemented; validation phase for multi-device and conflicts |
 | **Historical imports** | Planned; Xiaomi/Mi Fitness/Zepp Life staging + correction rules |
 | **Desktop-only for now** | DB import/warmup, FIT/Polar pipeline, strength HR analytics depth, advanced food forecast, mini-db dev export |
+| **Schema baseline** | Public `SCHEMA_VERSION=80`: v078 cardio duration/distance, v079 meal-plan finalization, v080 shared strength catalog |
 
 ---
 
@@ -27,9 +28,10 @@ Last updated: **2026-06-05**.
 |------|------|------------|
 | Shell | `frontend/src/components/Layout.tsx` | Sidebar, `dashboard-shell`, wide tokens |
 | Routes | `frontend/src/App.tsx`, `legacyRedirects.ts` | Активные страницы + redirect-only legacy |
-| Pages | `frontend/src/pages/*` | Home, Workouts, Food, Body hub, Analytics, Settings, HC, Cycle |
+| Pages | `frontend/src/pages/*` | Home, Workouts, Food, Body hub (incl. HC tab), Analytics, Settings, Cycle |
 | API | `frontend/src/api/*` | REST; `X-User-ID` + `client_mode` headers |
-| Config | `frontend/src/config/clientCapabilities.ts` | `admin_browser` vs `desktop_app` feature flags |
+| Config | `frontend/src/config/clientCapabilities.ts` | `admin_browser` vs `desktop_app` feature flags; packaged OAuth debug off |
+| Packaging | `.env.desktop.public`, `packaging/seed/` | Public OAuth ids in installer; secrets never ship — [PACKAGING_SECRETS.md](./PACKAGING_SECRETS.md) |
 | Backend | `backend/routers/*`, `backend/services/*` | Бизнес-логика, import, sync, analytics |
 | Data | `database/`, `FORMA_DATA_DIR` | `workouts.db`, attach `shared.db` |
 
@@ -37,7 +39,9 @@ Last updated: **2026-06-05**.
 
 **Тренировки (`/workouts`):** strength/cardio/exercise-set surfaces. Strength uses flat DB rows plus block metadata for `normal` / `superset` / `circuit`; templates define structure, latest history defines working values. Details: [WORKOUTS.md](./WORKOUTS.md).
 
-**Питание (`/food`):** week-first diary, products/composite dishes, meal plans in `workouts.db` (v070), shared product catalog in `shared.db`. Details: [NUTRITION.md](./NUTRITION.md).
+**Питание (`/food`):** week-first diary, products/composite dishes, meal plans in `workouts.db` (v070/v079), product catalog in `shared.db` only. Details: [NUTRITION.md](./NUTRITION.md).
+
+**Единицы (`units_system`):** backend stores `metric` / `american` in `user_profile`; frontend display helpers live in `frontend/src/utils/americanUnits.ts`. Internal storage remains SI (`kg`, `cm`, `kcal`, seconds/meters) and conversion is presentation/input-layer only.
 
 ---
 
@@ -52,26 +56,33 @@ flowchart LR
     U[get_current_user_id]
     R[Repositories / services]
   end
-  subgraph DB
-    W[(workouts.db user-scoped rows)]
-    S[(shared.db catalogs)]
+  subgraph Personal["workouts.db"]
+    W[workouts sets history]
+    M[meal plans body metrics]
+    T[tokens sync profile]
   end
-  H --> U --> R --> W
-  R --> S
+  subgraph Reference["shared.db"]
+    S[food stretch strength lookups]
+  end
+  H --> U --> R --> Personal
+  R -->|ATTACH read/write catalog| Reference
 ```
 
-| Категория | Поведение |
-|-----------|-----------|
-| **User-scoped** | Workouts, food entries, body metrics, presets, steps, HC aggregates, Polar tokens (`local_user_id`), meal plans, cardio settings — фильтр/запись по `user_id` |
-| **Personal presets** | `workout_presets` + children; dedup `(user_id, name COLLATE NOCASE)` при импорте |
-| **Exercise groups** | User scope на связанных таблицах (миграции v68+) |
-| **Import merge** | Staging ATTACH → copy с remap на **текущего** пользователя импорта |
-| **Import replace** | Atomic swap + `user_id_remap` на user tables |
-| **Browser import (dev)** | `POST /api/database/import/stage` — scoped к сессии, не «всегда user 1» |
-| **System / shared** | `shared.db` — продукты и общие справочники; отдельные merge rules |
-| **Cloud identity** | Yandex `uid` → папка `FormaSync/{uid}/`; локальный `users.id` — через OAuth / `link_user` |
+| Категория | Где | Поведение |
+|-----------|-----|-----------|
+| **Reference / shared** | `shared.db` | `food_products`, `stretching_exercises`, `strength_exercises`, bike lookups — **без** `user_id`; GitHub-safe после `build_public_shared_db.py` |
+| **Workouts & history** | `workouts.db` | `strength_workouts`, `cardio_workouts`, HR/GPS samples — per `user_id` |
+| **Meal plans / food diary** | `workouts.db` | Рационы и `food_entries` в main после v079; **не** в shared |
+| **Body / HC aggregates** | `workouts.db` | `body_metrics`, steps, sleep, bracelet calories |
+| **Auth / cloud linkage** | `workouts.db` | `cloud_tokens`, `polar_tokens`, `user_cloud_links` — **никогда** в публичном shared |
+| **Personal presets** | `workouts.db` | `workout_presets` + children; dedup `(user_id, name)` при импорте |
+| **Strength catalog writes** | `shared.db` canonical | `exercise_catalog_service` → `shared.strength_exercises`; performance остаётся в workouts |
+| **Import merge** | Staging ATTACH | Copy с remap на **текущего** `user_id`; `food_products` merge by `name` |
+| **Import replace** | Both files | Atomic swap + `user_id_remap`; cloud restore — **workouts.db only** |
+| **Cloud identity** | `workouts.db` + Yandex path | `FormaSync/{yandex_uid}/`; `link_user` для data scope |
 
-Подробнее: [DATABASE.md](./DATABASE.md), [FORMA_SYNC.md](./FORMA_SYNC.md), [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) (Data scope).
+Политика публикации: [DATABASE.md § Public Repository Data Policy](./DATABASE.md#public-repository-data-policy).  
+См. также: [FORMA_SYNC.md](./FORMA_SYNC.md), [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).
 
 ---
 
@@ -79,8 +90,8 @@ flowchart LR
 
 | Хранилище | Владелец | Sync |
 |-----------|----------|------|
-| `%APPDATA%\Forma\workouts.db` | Desktop user profile | FormaSync export/import; не whole-DB |
-| `shared.db` | Attach | ZIP import/export вместе с workouts |
+| `%APPDATA%\Forma\workouts.db` | Desktop user — **все личные данные** | FormaSync entities; cloud restore target |
+| `shared.db` | Attach — **только справочники** | ZIP import/export; GitHub repo ships sanitized copy |
 | `myhealth.db` | Mobile device user | FormaSync; native `FormaBackups/*.db` optional |
 | Yandex `FormaSync/` | `yandex_uid` | JSONL packages, revision monotonic |
 | Yandex `FormaBackups/` | Emergency full DB | Отдельно от FormaSync |
@@ -253,12 +264,19 @@ Only apply when `xiaomi_month_total > existing_forma_month_total`. Preserve raw 
 
 | Путь | Когда |
 |------|--------|
-| FormaSync | Инкремент JSONL на Yandex (`FormaSync/`) — default mobile/cloud |
+| FormaSync | Инкремент JSONL на Yandex (`FormaSync/`) — default mobile/cloud; desktop UI: Settings → Данные → Облако |
 | `legacy_api` | Mobile → полный REST sync к ПК |
+| Mobile orchestrator | `syncOrchestrator.ts` + queue — unified legacy + FormaSync |
 | Native cloud backup | Android `.db` в `FormaBackups/` |
 | Desktop cloud | Server-mediated backup через settings |
 
-Детали: [FORMA_SYNC.md](./FORMA_SYNC.md), [DATABASE.md](./DATABASE.md), historical cleanup notes in [archive/CLEANUP.md](./archive/CLEANUP.md).
+**OAuth:** Google/Yandex default **PKCE** (public install); Polar confidential — [AUTH_PKCE_AUDIT.md](./AUTH_PKCE_AUDIT.md).
+
+**Packaging boundary:** clean installers read `.env.desktop.public`, generate/use `packaging/seed/*.db`, and run `desktop:check-secrets`. They must not bundle root `.env`, `workouts.db`, unsanitized dev `shared.db`, WAL/SHM files, or runtime logs.
+
+**HC desktop:** `/health-connect` → redirect `/body?tab=health-connect`.
+
+Детали: [FORMA_SYNC.md](./FORMA_SYNC.md), [HEALTH_CONNECT.md](./HEALTH_CONNECT.md), [DATABASE.md](./DATABASE.md).
 
 ---
 

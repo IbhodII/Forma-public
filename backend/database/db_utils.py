@@ -175,15 +175,29 @@ def _repair_shared_legacy_columns(conn: sqlite3.Connection) -> None:
 
     _repair_food_products_null_ids(conn)
 
-    _ensure_column(conn, "shared", "meal_templates", "phase", "TEXT NOT NULL DEFAULT 'cut'")
-    _ensure_column(conn, "shared", "daily_meal_plans", "phase", "TEXT NOT NULL DEFAULT 'cut'")
-    _ensure_column(conn, "shared", "daily_meal_plans", "description", "TEXT")
-    _ensure_column(conn, "shared", "daily_meal_plans", "is_custom", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "shared", "daily_meal_plans", "is_weekly", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "shared", "daily_meal_plan_templates", "template_id", "INTEGER")
-    _ensure_column(conn, "shared", "meal_plan_items", "plan_id", "INTEGER")
-    _ensure_column(conn, "shared", "meal_plan_items", "day_offset", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "shared", "meal_plan_items", "meal_type", "TEXT NOT NULL DEFAULT 'breakfast1'")
+    from database.meal_plans_storage import meal_plan_schema
+
+    meal_schema = meal_plan_schema(conn)
+    if meal_schema == "main":
+        _ensure_column(conn, "main", "meal_templates", "phase", "TEXT NOT NULL DEFAULT 'cut'")
+        _ensure_column(conn, "main", "daily_meal_plans", "phase", "TEXT NOT NULL DEFAULT 'cut'")
+        _ensure_column(conn, "main", "daily_meal_plans", "description", "TEXT")
+        _ensure_column(conn, "main", "daily_meal_plans", "is_custom", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "main", "daily_meal_plans", "is_weekly", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "main", "daily_meal_plan_templates", "template_id", "INTEGER")
+        _ensure_column(conn, "main", "meal_plan_items", "plan_id", "INTEGER")
+        _ensure_column(conn, "main", "meal_plan_items", "day_offset", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "main", "meal_plan_items", "meal_type", "TEXT NOT NULL DEFAULT 'breakfast1'")
+    else:
+        _ensure_column(conn, "shared", "meal_templates", "phase", "TEXT NOT NULL DEFAULT 'cut'")
+        _ensure_column(conn, "shared", "daily_meal_plans", "phase", "TEXT NOT NULL DEFAULT 'cut'")
+        _ensure_column(conn, "shared", "daily_meal_plans", "description", "TEXT")
+        _ensure_column(conn, "shared", "daily_meal_plans", "is_custom", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "shared", "daily_meal_plans", "is_weekly", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "shared", "daily_meal_plan_templates", "template_id", "INTEGER")
+        _ensure_column(conn, "shared", "meal_plan_items", "plan_id", "INTEGER")
+        _ensure_column(conn, "shared", "meal_plan_items", "day_offset", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "shared", "meal_plan_items", "meal_type", "TEXT NOT NULL DEFAULT 'breakfast1'")
 
     _ensure_column(conn, "shared", "stretching_exercises", "images_json", "TEXT")
     _ensure_column(conn, "shared", "stretching_exercises", "original_name", "TEXT")

@@ -1,5 +1,7 @@
 # Forma cleanup reference
 
+> **Archived — do not extend.** Superseded by [docs/README.md](../README.md) (2026-06-09). Port numbers and routes in this file may be historical (e.g. API **18002**).
+
 Archived historical reference after the desktop stabilization audit on **2026-06-02**.
 
 Current source of truth:

@@ -73,9 +73,12 @@ export function OAuthDesktopBridge() {
       }
 
       const message =
-        payload.message ||
-        payload.error ||
-        "Не удалось завершить OAuth. Проверьте %APPDATA%\\Forma\\logs\\oauth-flow.log";
+        payload.error === "callback_payload_timeout"
+          ? payload.message ||
+            "Сервер не вернул подтверждение вовремя. Закройте окно и нажмите «Подключить» ещё раз."
+          : payload.message ||
+            payload.error ||
+            "Не удалось завершить OAuth. Проверьте %APPDATA%\\Forma\\logs\\oauth-flow.log";
       oauthFlowLog("oauth_ui_error_shown", { step: "bridge_error", message, payload });
       showToast(message, "error");
 

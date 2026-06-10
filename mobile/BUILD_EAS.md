@@ -5,7 +5,7 @@
 ## 1. Подготовка (один раз)
 
 ```powershell
-cd C:\Users\brett\Desktop\MyHealthDashboard\mobile
+cd C:\path\to\MyHealthDashboard\mobile
 npm install
 ```
 
@@ -62,7 +62,7 @@ ID в `app.config.js`: `2f498565-e742-4ae6-8b86-10caabae0960`
 **CMD (ваш случай):** не используйте `$env:...` — это PowerShell. Просто:
 
 ```cmd
-cd C:\Users\brett\Desktop\MyHealthDashboard\mobile
+cd C:\path\to\MyHealthDashboard\mobile
 npm install
 npm run eas:preview
 ```
@@ -81,7 +81,7 @@ npm run eas:preview
 Задайте в `mobile/.env` **до** `eas build` / `npm run android:release` (или в [EAS Secrets](https://docs.expo.dev/build-reference/variables/) для облака):
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=http://192.168.31.54:8002
+EXPO_PUBLIC_API_BASE_URL=http://192.168.x.x:8002
 EXPO_PUBLIC_YANDEX_CLIENT_ID=...
 EXPO_PUBLIC_GOOGLE_CLIENT_ID=...
 ```
@@ -144,7 +144,7 @@ $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
 ### Сборка APK
 
 ```powershell
-cd C:\Users\brett\Desktop\MyHealthDashboard\mobile
+cd C:\path\to\MyHealthDashboard\mobile
 npm install
 cd android
 .\gradlew.bat clean assembleRelease -PreactNativeArchitectures=arm64-v8a
@@ -160,7 +160,7 @@ APK: `android\app\build\outputs\apk\release\app-release.apk`
 
 1. Заменить `Android\Sdk\cmake\*\bin\ninja.exe` на [ninja 1.12.1](https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip) (проверка: `ninja --version`).
 2. Включить длинные пути Windows: *gpedit* → *Enable Win32 long paths*, или реестр `LongPathsEnabled=1`, перезагрузка.
-3. Собрать из короткого пути: `subst H: C:\Users\brett\Desktop\MyHealthDashboard` → открыть `H:\mobile\android` в Studio.
+3. Собрать из короткого пути: `subst H: C:\path\to\MyHealthDashboard` → открыть `H:\mobile\android` в Studio.
 4. Облачная сборка без возни: `npm run eas:preview`.
 
 ## Сборка JS-бандла (если EAS падает на Bundle JavaScript)

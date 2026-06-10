@@ -21,7 +21,12 @@ from utils.constants import (
 )
 from utils.date_guard import is_future_workout_date
 from utils.date_utils import normalize_cardio_date_column
-from utils.bike_track import enrich_geojson_from_sensors, geojson_to_track_points
+from utils.bike_track import (
+    enrich_geojson_from_sensors,
+    geojson_has_point_telemetry,
+    geojson_to_track_points,
+    merge_telemetry_into_track_points,
+)
 from utils.sensor_downsample import apply_sensor_downsample, thin_rows_by_interval
 from utils.math_utils import calc_pace_min_km, calc_pace_sec_100m, calc_speed_kmh
 
@@ -492,12 +497,12 @@ def _zone_time_empty(
 ) -> dict[str, Any]:
     from utils.hr_profile import analytics_heart_rate_zones
 
-    zones = analytics_heart_rate_zones(max_hr)
+    zone_meta = analytics_heart_rate_zones(max_hr)
     return {
         "days": days,
         "max_heart_rate": max_hr,
         "workout_type": workout_type,
-        "zones": zones,
+        "zones": zone_meta,
         "items": [
             {
                 "zone_id": z["id"],
@@ -506,7 +511,7 @@ def _zone_time_empty(
                 "minutes": 0.0,
                 "percent": 0.0,
             }
-            for z in zones
+            for z in zone_meta
         ],
         "total_seconds": 0,
         "available_types": available_types or [],
@@ -817,13 +822,27 @@ def get_gps_geojson(workout_id: int) -> str | None:
         return None
 
 
+def _row_optional_float(row: Any, key: str) -> float | None:
+    if key not in row.keys():
+        return None
+    val = row[key]
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_workout_sensors_raw(workout_id: int) -> list[dict[str, Any]]:
     """Строки workout_sensors по elapsed_sec."""
     conn = get_db()
     try:
+        sensor_cols = {r[1] for r in conn.execute("PRAGMA table_info(workout_sensors)").fetchall()}
+        power_sql = ", power_watts" if "power_watts" in sensor_cols else ""
         rows = conn.execute(
-            """
-            SELECT elapsed_sec, speed_kmh, cadence, elevation_m, temperature_c
+            f"""
+            SELECT elapsed_sec, speed_kmh, cadence, elevation_m, temperature_c{power_sql}
             FROM workout_sensors
             WHERE cardio_workout_id = ?
             ORDER BY elapsed_sec
@@ -835,10 +854,11 @@ def get_workout_sensors_raw(workout_id: int) -> list[dict[str, Any]]:
     return [
         {
             "elapsed_sec": int(r["elapsed_sec"]),
-            "speed_kmh": float(r["speed_kmh"]) if r["speed_kmh"] is not None else None,
-            "cadence": float(r["cadence"]) if r["cadence"] is not None else None,
-            "elevation_m": float(r["elevation_m"]) if r["elevation_m"] is not None else None,
-            "temperature_c": float(r["temperature_c"]) if r["temperature_c"] is not None else None,
+            "speed_kmh": _row_optional_float(r, "speed_kmh"),
+            "cadence": _row_optional_float(r, "cadence"),
+            "elevation_m": _row_optional_float(r, "elevation_m"),
+            "temperature_c": _row_optional_float(r, "temperature_c"),
+            "power_watts": _row_optional_float(r, "power_watts"),
         }
         for r in rows
     ]
@@ -916,6 +936,9 @@ def get_points(workout_id: int, *, interval_sec: int = 2) -> dict[str, Any]:
     if geo is None:
         raise ValueError("Нет GPS-точек")
     points = geojson_to_track_points(geo)
+    sensors = get_workout_sensors_raw(workout_id)
+    hr = get_heart_rate_data(workout_id)
+    points = merge_telemetry_into_track_points(points, sensors, hr)
     points = thin_rows_by_interval(points, interval_sec)
     return {
         "workout_id": int(workout_id),
@@ -949,10 +972,10 @@ def get_gps(workout_id: int) -> dict[str, Any] | None:
     props = {}
     if data.get("features"):
         props = (data["features"][0] or {}).get("properties") or {}
-    if not props.get("elapsed_sec"):
-        sensors = get_workout_sensors_raw(workout_id)
-        hr = get_heart_rate_data(workout_id)
-        if sensors or hr:
+    sensors = get_workout_sensors_raw(workout_id)
+    hr = get_heart_rate_data(workout_id)
+    if sensors or hr:
+        if not props.get("elapsed_sec") or not geojson_has_point_telemetry(props):
             data = enrich_geojson_from_sensors(data, sensors, hr)
     return data
 

@@ -35,7 +35,7 @@ import {
   paceSecPer100m,
   speedKmh,
 } from "../utils/format";
-import { parseTrackGeojson, type TrackPoint } from "../utils/bikeTrack";
+import { enrichTrackPoints, parseTrackGeojson, type TrackPoint } from "../utils/bikeTrack";
 import type { HrChartAxis } from "../utils/hrChart";
 import { parseApiError } from "../utils/validation";
 import { legacyDataSourceToType } from "../utils/workoutSources";
@@ -48,6 +48,7 @@ import { Loader } from "./Loader";
 import { MetricSourceLine } from "./sources/MetricSourceLine";
 import { SourceConflictBanner } from "./sources/SourceConflictBanner";
 import { WorkoutSourceBadge } from "./sources/WorkoutSourceBadge";
+import "./cardio-workout-panel.css";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -320,13 +321,14 @@ export function CardioWorkoutPanel({
 }) {
   const isPool = workout.type === CARDIO_POOL;
   const isBike = workout.type === CARDIO_BIKE;
+  const isRun = workout.type === CARDIO_RUN;
   const isPolar = workout.data_source === CARDIO_SOURCE_POLAR;
 
   const showHrButton = hasHr && !isPool;
-  const showMapButton = hasGps && (isBike || workout.type === CARDIO_RUN);
-  const showSensorsButton = hasSensors && isBike;
+  const showMapButton = hasGps && (isBike || isRun);
+  const showSensorsButton = hasSensors && (isBike || isRun);
 
-  const [hrOpen, setHrOpen] = useState(false);
+  const [hrOpen, setHrOpen] = useState(showHrButton);
   const [mapOpen, setMapOpen] = useState(false);
   const [sensorsOpen, setSensorsOpen] = useState(false);
   const [chartAxis, setChartAxis] = useState<HrChartAxis>("time");
@@ -364,8 +366,8 @@ export function CardioWorkoutPanel({
     staleTime: 5 * 60_000,
   });
 
-  /** Детальные точки для hover — только вело с FIT; Polar/бег — GeoJSON. */
-  const usePointsQuery = mapOpen && showMapButton && isBike;
+  /** Детальные точки для hover — вело/бег с GPS (FIT или обогащённый GeoJSON). */
+  const usePointsQuery = mapOpen && showMapButton && (isBike || isRun);
   const pointsQuery = useQuery({
     queryKey: queryKeys.cardioPoints(workout.id, dataInterval),
     queryFn: () => fetchWorkoutPoints(workout.id, dataInterval),
@@ -400,8 +402,9 @@ export function CardioWorkoutPanel({
   );
 
   const mapPoints: TrackPoint[] = useMemo(() => {
+    let points: TrackPoint[];
     if (pointsQuery.data?.points.length) {
-      return pointsQuery.data.points.map((p) => ({
+      points = pointsQuery.data.points.map((p) => ({
         lat: p.lat,
         lon: p.lon,
         elapsedSec: p.elapsed_sec,
@@ -411,9 +414,12 @@ export function CardioWorkoutPanel({
         temperatureC: p.temperature_c ?? null,
         heartRate: p.heart_rate ?? null,
         distanceM: p.distance_m ?? null,
+        powerWatts: p.power_watts ?? null,
       }));
+    } else {
+      points = track?.points ?? [];
     }
-    return track?.points ?? [];
+    return enrichTrackPoints(points);
   }, [pointsQuery.data, track]);
 
   const mapPointsPayload = useMemo(
@@ -428,6 +434,7 @@ export function CardioWorkoutPanel({
         temperature_c: p.temperatureC,
         heart_rate: p.heartRate,
         distance_m: p.distanceM,
+        power_watts: p.powerWatts,
       })),
     [mapPoints],
   );
@@ -546,24 +553,44 @@ export function CardioWorkoutPanel({
               className={sensorsOpen ? "btn-secondary text-xs py-1" : "btn-primary text-xs py-1"}
               onClick={() => setSensorsOpen((v) => !v)}
             >
-              {sensorsOpen ? "Скрыть датчики (FIT)" : "Датчики (FIT)"}
+              {sensorsOpen
+                ? isRun
+                  ? "Скрыть графики"
+                  : "Скрыть датчики (FIT)"
+                : isRun
+                  ? "Графики темпа и датчиков"
+                  : "Датчики (FIT)"}
             </button>
           )}
         </div>
       )}
 
       {hrOpen && showHrButton && (
-        <div className="min-w-0 space-y-2">
+        <div className="cardio-analytics-charts-stack min-w-0">
           <ChartAxisToggle axis={chartAxis} onChange={setChartAxis} canDistance={canDistance} />
           {hrQuery.isLoading && <Loader label="Пульс…" />}
           {hrQuery.isError && <ErrorAlert message={parseApiError(hrQuery.error)} />}
           {hrQuery.data && hrQuery.data.points.length > 0 && (
-            <HeartRateChart
-              points={hrQuery.data.points}
-              axis={chartAxis}
-              smoothWindow={hrSmoothWindow}
-              timeAxisSeconds={isPolar}
-            />
+            <div className="cardio-analytics-chart-panel desktop-chart-panel rounded-lg border border-[rgb(var(--app-border)/0.45)] bg-[rgb(var(--app-surface))] p-2 sm:p-2.5 shadow-[var(--app-shadow-sm)]">
+              <HeartRateChart
+                analytics
+                points={hrQuery.data.points}
+                axis={chartAxis}
+                smoothWindow={hrSmoothWindow}
+                timeAxisSeconds={isPolar}
+                onPlotClick={
+                  mapOpen && showMapButton
+                    ? (ev) => {
+                        const idx = ev.points?.[0]?.pointIndex;
+                        if (idx == null) return;
+                        const pt = hrQuery.data?.points[idx];
+                        const sec = pt?.elapsed_sec ?? pt?.seconds;
+                        if (sec != null) setFocusElapsed(sec);
+                      }
+                    : undefined
+                }
+              />
+            </div>
           )}
           {hrQuery.isSuccess && (!hrQuery.data || hrQuery.data.points.length === 0) && (
             <p className="text-sm text-[rgb(var(--app-text-muted))]">Нет данных пульса</p>
@@ -621,6 +648,7 @@ export function CardioWorkoutPanel({
               sensors={sensorsQuery.data}
               axis={chartAxis}
               onFocusPoint={handleChartFocus}
+              workoutType={workout.type}
             />
           )}
           {sensorsQuery.data && sensorsQuery.data.elapsed_sec.length === 0 && (

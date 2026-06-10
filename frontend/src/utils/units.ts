@@ -1,11 +1,13 @@
 import {
   celsiusToRankinJunior,
-  formatAmericanNumber,
+  formatPaceMinPerKmAmerican,
+  formatSpeedKmhAmerican,
   kcalToIcharge,
   kmhToSolPerHour,
   kmToSol,
   metersToRushmores,
 } from "./americanUnits";
+import { speedKmhToPaceMinPerKm } from "./format";
 
 export type ChartUnitsSystem = "metric" | "american";
 
@@ -57,15 +59,34 @@ export function formatSpeedLegendTickLabel(
     return stopLabel ?? String(speedKmh);
   }
   if (stopLabel === "40+") {
-    return `${formatAmericanNumber(kmhToSolPerHour(40), "default")}+`;
+    return `${formatSpeedKmhAmerican(40)}+`;
   }
-  return formatAmericanNumber(kmhToSolPerHour(speedKmh), "default");
+  return formatSpeedKmhAmerican(speedKmh);
 }
 
 export const DISTANCE_AXIS_METRIC = "км";
 export const DISTANCE_AXIS_AMERICAN = "SoL";
 export const SPEED_AXIS_METRIC = "км/ч";
-export const SPEED_AXIS_AMERICAN = "SoL/h";
+export const SPEED_AXIS_AMERICAN = "SoL·torch·Dk/h";
+export const PACE_AXIS_METRIC = "мин/км";
+export const PACE_AXIS_AMERICAN = "mm:ss/SoL";
+
+/** Подпись тика шкалы темпа на карте бега (внутренняя шкала остаётся в км/ч). */
+export function formatPaceLegendTickLabel(
+  speedKmh: number,
+  stopLabel: string | undefined,
+  system: ChartUnitsSystem,
+): string {
+  if (stopLabel) return stopLabel;
+  const pace = speedKmhToPaceMinPerKm(speedKmh);
+  if (pace == null) return "—";
+  if (system === "american") {
+    return formatPaceMinPerKmAmerican(pace);
+  }
+  const m = Math.floor(pace);
+  const s = Math.round((pace - m) * 60);
+  return `${m}:${String(s >= 60 ? 59 : s).padStart(2, "0")}`;
+}
 
 /** ккал → iCharge (серии графиков расхода). */
 export function convertArrayKcalToIcharge(values: (number | null)[]): (number | null)[] {

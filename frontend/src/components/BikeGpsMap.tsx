@@ -13,24 +13,33 @@ import {
 } from "react-leaflet";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import {
+  getScaleMaxKmh,
   getSpeedLegendTicks,
+  isRunningSpeedProfile,
   resolveSpeedColorProfile,
   speedScaleGradientCss,
-  speedToColor,
-  type CyclingWorkoutProfile,
+  type SpeedColorProfile,
 } from "../config/speedColorScale";
 import { MapAttributionSetup, OSM_TILE_ATTRIBUTION } from "./MapOsmAttribution";
 import { useUnits } from "../hooks/useUnits";
+import { RoutePointTelemetry } from "./RoutePointTelemetry";
 import {
   buildSpeedSegments,
   buildWorkoutSpeedStats,
+  enrichTrackPoints,
   findNearestPoint,
-  formatClockFromStart,
-  formatElapsed,
   parseTrackGeojson,
   type TrackPoint,
 } from "../utils/bikeTrack";
-import { formatSpeedLegendTickLabel, SPEED_AXIS_AMERICAN, SPEED_AXIS_METRIC } from "../utils/units";
+import { speedKmhToPaceMinPerKm } from "../utils/format";
+import {
+  formatPaceLegendTickLabel,
+  formatSpeedLegendTickLabel,
+  PACE_AXIS_AMERICAN,
+  PACE_AXIS_METRIC,
+  SPEED_AXIS_AMERICAN,
+  SPEED_AXIS_METRIC,
+} from "../utils/units";
 
 const HIT_RADIUS = 8;
 const MAX_POINT_MARKERS = 1200;
@@ -79,7 +88,7 @@ function MapHoverProbe({
 }: {
   points: TrackPoint[];
   startTime?: string | null;
-  speedProfile: CyclingWorkoutProfile;
+  speedProfile: SpeedColorProfile;
 }) {
   const [hover, setHover] = useState<TrackPoint | null>(null);
 
@@ -108,7 +117,7 @@ function MapHoverProbe({
       interactive={false}
     >
       <Tooltip direction="top" offset={[0, -6]} opacity={0.98} permanent>
-        <PointPopupContent point={hover} startTime={startTime} speedProfile={speedProfile} compact />
+        <RoutePointTelemetry point={hover} startTime={startTime} speedProfile={speedProfile} compact />
       </Tooltip>
     </CircleMarker>
   );
@@ -122,7 +131,7 @@ function PinnedPopup({
 }: {
   point: TrackPoint;
   startTime?: string | null;
-  speedProfile: CyclingWorkoutProfile;
+  speedProfile: SpeedColorProfile;
   onClose: () => void;
 }) {
   const map = useMap();
@@ -140,7 +149,7 @@ function PinnedPopup({
       pathOptions={{ color: "#1e293b", weight: 2, fillColor: "#fbbf24", fillOpacity: 1 }}
     >
       <Popup eventHandlers={{ remove: () => onClose() }}>
-        <PointPopupContent point={point} startTime={startTime} speedProfile={speedProfile} />
+        <RoutePointTelemetry point={point} startTime={startTime} speedProfile={speedProfile} />
       </Popup>
     </CircleMarker>
   );
@@ -155,79 +164,6 @@ function FocusPoint({ point }: { point: TrackPoint | null }) {
   return null;
 }
 
-function PointPopupContent({
-  point,
-  startTime,
-  speedProfile,
-  compact = false,
-}: {
-  point: TrackPoint;
-  startTime?: string | null;
-  speedProfile: CyclingWorkoutProfile;
-  compact?: boolean;
-}) {
-  const { formatElevation, formatTemperature, formatSpeed, formatDistance } = useUnits();
-
-  const distanceLabel =
-    point.distanceM != null ? formatDistance(point.distanceM / 1000) : null;
-
-  return (
-    <div className={`space-y-0.5 min-w-[11rem] ${compact ? "text-[10px]" : "text-xs"}`}>
-      <p className="font-medium text-slate-800 dark:text-slate-100">
-        {formatClockFromStart(startTime, point.elapsedSec)}
-        {!compact && (
-          <span className="font-normal text-slate-400 dark:text-slate-500">
-            {" "}
-            (+{formatElapsed(point.elapsedSec)})
-          </span>
-        )}
-      </p>
-      {point.speedKmh != null && point.speedKmh > 0 && (
-        <p>
-          <span className="text-slate-500">Скорость: </span>
-          <span className="font-semibold tabular-nums inline-flex items-center gap-1.5">
-            <span
-              className="inline-block w-2 h-2 rounded-full shrink-0 ring-1 ring-black/10"
-              style={{ backgroundColor: speedToColor(point.speedKmh, speedProfile) }}
-            />
-            {formatSpeed(point.speedKmh)}
-          </span>
-        </p>
-      )}
-      {distanceLabel != null && (
-        <p>
-          <span className="text-slate-500">Дистанция: </span>
-          {distanceLabel}
-        </p>
-      )}
-      {point.elevationM != null && (
-        <p>
-          <span className="text-slate-500">Высота: </span>
-          {formatElevation(point.elevationM)}
-        </p>
-      )}
-      {point.cadence != null && point.cadence > 0 && (
-        <p>
-          <span className="text-slate-500">Каденс: </span>
-          {Math.round(point.cadence)} об/мин
-        </p>
-      )}
-      {point.temperatureC != null && (
-        <p>
-          <span className="text-slate-500">Темп.: </span>
-          {formatTemperature(point.temperatureC)}
-        </p>
-      )}
-      {point.heartRate != null && (
-        <p>
-          <span className="text-slate-500">Пульс: </span>
-          {point.heartRate} уд/мин
-        </p>
-      )}
-    </div>
-  );
-}
-
 function apiPointToTrack(p: {
   lat: number;
   lon: number;
@@ -238,6 +174,7 @@ function apiPointToTrack(p: {
   temperature_c?: number | null;
   heart_rate?: number | null;
   distance_m?: number | null;
+  power_watts?: number | null;
 }): TrackPoint {
   return {
     lat: p.lat,
@@ -249,6 +186,7 @@ function apiPointToTrack(p: {
     temperatureC: p.temperature_c ?? null,
     heartRate: p.heart_rate ?? null,
     distanceM: p.distance_m ?? null,
+    powerWatts: p.power_watts ?? null,
   };
 }
 
@@ -257,14 +195,18 @@ function SpeedLegendBar({
   system,
   compact = false,
 }: {
-  profile: CyclingWorkoutProfile;
+  profile: SpeedColorProfile;
   system: "metric" | "american";
   compact?: boolean;
 }) {
+  const isRunning = isRunningSpeedProfile(profile);
+  const scaleMax = getScaleMaxKmh(profile);
   const gradient = speedScaleGradientCss(profile);
   const ticks = getSpeedLegendTicks(profile).map((tick) => ({
     ...tick,
-    label: formatSpeedLegendTickLabel(tick.speedKmh, tick.label, system),
+    label: isRunning
+      ? formatPaceLegendTickLabel(tick.speedKmh, tick.label, system)
+      : formatSpeedLegendTickLabel(tick.speedKmh, tick.label, system),
   }));
 
   return (
@@ -281,7 +223,7 @@ function SpeedLegendBar({
             style={
               tick.speedKmh === 0
                 ? { position: "absolute", left: "0" }
-                : tick.speedKmh >= 40
+                : tick.speedKmh >= scaleMax - 0.5
                   ? { position: "absolute", right: "0" }
                   : { position: "absolute", left: `${tick.positionPct}%` }
             }
@@ -298,20 +240,29 @@ function SpeedLegend({
   profile,
   workoutStats,
 }: {
-  profile: CyclingWorkoutProfile;
+  profile: SpeedColorProfile;
   workoutStats?: ReturnType<typeof buildWorkoutSpeedStats> | null;
 }) {
-  const { system, formatSpeed } = useUnits();
-  const speedUnit = system === "american" ? SPEED_AXIS_AMERICAN : SPEED_AXIS_METRIC;
+  const { system, formatSpeed, formatPace } = useUnits();
+  const isRunning = isRunningSpeedProfile(profile);
+  const axisUnit = isRunning
+    ? system === "american"
+      ? PACE_AXIS_AMERICAN
+      : PACE_AXIS_METRIC
+    : system === "american"
+      ? SPEED_AXIS_AMERICAN
+      : SPEED_AXIS_METRIC;
 
   return (
     <div className="rounded-lg border border-[rgb(var(--app-border))] bg-[rgb(var(--app-surface))] px-3 py-2.5 space-y-2 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="text-[11px] font-semibold text-[rgb(var(--app-text))] uppercase tracking-wide">
-          Скорость · {speedUnit}
+          {isRunning ? "Темп" : "Скорость"} · {axisUnit}
         </p>
         <p className="text-[10px] text-[rgb(var(--app-text-muted))]">
-          Фиксированная шкала · сравнимо между поездками
+          {isRunning
+            ? "Фиксированная шкала · сравнимо между пробежками"
+            : "Фиксированная шкала · сравнимо между поездками"}
         </p>
       </div>
 
@@ -319,7 +270,17 @@ function SpeedLegend({
 
       {workoutStats && (
         <p className="text-[10px] text-[rgb(var(--app-text-muted))] tabular-nums border-t border-[rgb(var(--app-border)/0.5)] pt-1.5">
-          Эта поездка: ср. {formatSpeed(workoutStats.avg)} · макс. {formatSpeed(workoutStats.max)}
+          {isRunning ? (
+            <>
+              Эта пробежка: ср.{" "}
+              {formatPace(speedKmhToPaceMinPerKm(workoutStats.avg) ?? 0)} · макс.{" "}
+              {formatPace(speedKmhToPaceMinPerKm(workoutStats.max) ?? 0)}
+            </>
+          ) : (
+            <>
+              Эта поездка: ср. {formatSpeed(workoutStats.avg)} · макс. {formatSpeed(workoutStats.max)}
+            </>
+          )}
         </p>
       )}
     </div>
@@ -347,6 +308,7 @@ export function BikeGpsMap({
     temperature_c?: number | null;
     heart_rate?: number | null;
     distance_m?: number | null;
+    power_watts?: number | null;
   }>;
   focusPoint?: TrackPoint | null;
   onMapPointSelect?: (p: TrackPoint) => void;
@@ -359,10 +321,10 @@ export function BikeGpsMap({
   const speedProfile = useMemo(() => resolveSpeedColorProfile(workoutType), [workoutType]);
 
   const points = useMemo(() => {
-    if (pointsData?.length) {
-      return pointsData.map(apiPointToTrack);
-    }
-    return parsed.points;
+    const raw = pointsData?.length
+      ? pointsData.map(apiPointToTrack)
+      : parsed.points;
+    return enrichTrackPoints(raw);
   }, [pointsData, parsed.points]);
 
   const startTime = startTimeProp ?? parsed.startTime;
@@ -465,7 +427,7 @@ export function BikeGpsMap({
                 }}
               >
                 <Tooltip direction="top" offset={[0, -4]} opacity={0.95}>
-                  <PointPopupContent
+                  <RoutePointTelemetry
                     point={p}
                     startTime={startTime}
                     speedProfile={speedProfile}

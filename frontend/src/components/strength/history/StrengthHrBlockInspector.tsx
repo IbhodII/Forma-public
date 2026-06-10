@@ -29,13 +29,14 @@ export function StrengthHrBlockInspector({
 }: {
   block: StrengthHrEditableBlock | null;
   blocks: StrengthHrEditableBlock[];
-  sets: StrengthHrSetMetrics[];
+  sets: StrengthHrSetMetrics[] | null | undefined;
   splitMode: boolean;
   onDispatch: (action: StrengthHrEditorAction) => void;
 }) {
+  const safeSets = sets ?? [];
   const setOptions = useMemo(
-    () => [...sets].sort((a, b) => a.order_index - b.order_index),
-    [sets],
+    () => [...safeSets].sort((a, b) => a.order_index - b.order_index),
+    [safeSets],
   );
 
   const sorted = useMemo(
@@ -57,6 +58,18 @@ export function StrengthHrBlockInspector({
         {splitMode
           ? "Выберите блок и кликните на графике, чтобы разделить."
           : "Кликните блок на графике для просмотра деталей."}
+      </div>
+    );
+  }
+
+  if (
+    !Number.isFinite(block.start_sec) ||
+    !Number.isFinite(block.end_sec) ||
+    block.end_sec <= block.start_sec
+  ) {
+    return (
+      <div className="rounded-lg border border-amber-300/60 bg-amber-50/80 dark:bg-amber-950/30 p-2 text-[11px] text-amber-900 dark:text-amber-100">
+        Блок с некорректными границами — выберите другой блок или сбросьте разметку.
       </div>
     );
   }

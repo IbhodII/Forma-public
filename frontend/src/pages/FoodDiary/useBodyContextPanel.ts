@@ -10,6 +10,8 @@ import {
   rollingBalanceDatesThroughYesterday,
 } from "../../shared/utils/rollingBalancePeriod";
 import type { BodyMetricRow } from "../../types";
+import { useUnits } from "../../hooks/useUnits";
+import { BODY_METRIC_STABLE_DELTA, formatBodyMetricValue } from "../../utils/bodyMetrics";
 
 export type BodyStatTrend = {
   diff: number | null;
@@ -56,6 +58,7 @@ function weekTrend(
   series: number[],
   phase: FoodPhase,
   metric: "weight" | "fat" | "lean" | "neutral",
+  formatDiff?: (diff: number) => string,
 ): BodyStatTrend {
   if (series.length < 2) {
     return { diff: null, label: "—", tone: "neutral" };
@@ -65,15 +68,17 @@ function weekTrend(
   if (!Number.isFinite(first) || !Number.isFinite(last)) {
     return { diff: null, label: "—", tone: "neutral" };
   }
-  const diff = Math.round((last - first) * 10) / 10;
+  const diff = Math.round((last - first) * 100) / 100;
   if (!Number.isFinite(diff)) {
     return { diff: null, label: "—", tone: "neutral" };
   }
-  if (Math.abs(diff) < 0.05) {
+  if (Math.abs(diff) < BODY_METRIC_STABLE_DELTA) {
     return { diff: 0, label: "стабильно", tone: "neutral" };
   }
   const arrow = diff > 0 ? "↑" : "↓";
-  const label = `${arrow} ${diff > 0 ? "+" : ""}${diff}`;
+  const label = formatDiff
+    ? formatDiff(diff)
+    : `${arrow} ${diff > 0 ? "+" : ""}${diff}`;
 
   let tone: BodyStatTrend["tone"] = diff > 0 ? "up" : "down";
   if (metric === "weight") {
@@ -118,6 +123,13 @@ export function useBodyContextPanel(
   snap: CutBulkSnapshot | null | undefined,
   goalLabel?: string | null,
 ) {
+  const {
+    formatBodyWeight,
+    formatCircumference,
+    formatCircumferenceChange,
+    formatHeight,
+    formatWeightChange,
+  } = useUnits();
   const sparkPeriod = useMemo(() => rollingBalanceDatesThroughYesterday(), []);
 
   const summaryQuery = useQuery({
@@ -192,9 +204,8 @@ export function useBodyContextPanel(
       stats.push({
         key: "weight",
         label: "Вес",
-        value: `${weight.toFixed(1)}`,
-        subValue: "кг",
-        trend: weekTrend(weightSeries, phase, "weight"),
+        value: formatBodyWeight(weight),
+        trend: weekTrend(weightSeries, phase, "weight", formatWeightChange),
         sparkline: weightSpark.sparkline,
         sparkEmptyHint: weightSpark.hint,
         sparkColor: "#22C55E",
@@ -207,7 +218,7 @@ export function useBodyContextPanel(
       stats.push({
         key: "fat",
         label: "% жира",
-        value: fatPct.toFixed(1),
+        value: formatBodyMetricValue(fatPct),
         subValue: "%",
         trend: weekTrend(fatSeries, phase, "fat"),
         sparkline: fatSpark.sparkline,
@@ -229,9 +240,8 @@ export function useBodyContextPanel(
       stats.push({
         key: "lean",
         label: "Сухая масса",
-        value: lean.toFixed(1),
-        subValue: "кг",
-        trend: weekTrend(leanSeries, phase, "lean"),
+        value: formatBodyWeight(lean),
+        trend: weekTrend(leanSeries, phase, "lean", formatWeightChange),
         sparkline: leanSpark.sparkline,
         sparkEmptyHint: leanSpark.hint,
         sparkColor: "#3b82f6",
@@ -246,7 +256,7 @@ export function useBodyContextPanel(
         trend: { diff: null, label: "—", tone: "neutral" },
         sparkline: [],
         sparkColor: "#94a3b8",
-        tooltip: heightCm ? `Рост ${heightCm} см` : undefined,
+        tooltip: heightCm ? `Рост ${formatHeight(heightCm)}` : undefined,
       });
     }
 
@@ -265,8 +275,7 @@ export function useBodyContextPanel(
       optional.push({
         key: "water",
         label: "Вода ~",
-        value: waterEst.toFixed(1),
-        subValue: "кг",
+        value: formatBodyWeight(waterEst),
         trend: { diff: null, label: "оценка", tone: "neutral" },
         sparkline: [],
         sparkColor: "#06b6d4",
@@ -279,9 +288,8 @@ export function useBodyContextPanel(
       optional.push({
         key: "waist",
         label: "Талия",
-        value: waist.toFixed(1),
-        subValue: "см",
-        trend: weekTrend(waistSeries, phase, "neutral"),
+        value: formatCircumference(waist),
+        trend: weekTrend(waistSeries, phase, "neutral", formatCircumferenceChange),
         sparkline: waistSpark.sparkline,
         sparkEmptyHint: waistSpark.hint,
         sparkColor: "#a855f7",
@@ -316,5 +324,10 @@ export function useBodyContextPanel(
     snap,
     profileQuery.data?.height_cm,
     goalLabel,
+    formatBodyWeight,
+    formatCircumference,
+    formatCircumferenceChange,
+    formatHeight,
+    formatWeightChange,
   ]);
 }

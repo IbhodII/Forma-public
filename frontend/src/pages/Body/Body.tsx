@@ -37,6 +37,7 @@ export function Body({ embedded = false }: { embedded?: boolean }) {
     formatWeightChange,
     formatHeight,
     formatCircumference,
+    formatCircumferenceChange,
   } = useUnits();
   const [historyOffset, setHistoryOffset] = useState(0);
   const [chartPeriod, setChartPeriod] = useState<BodyChartPeriod>("90d");
@@ -130,6 +131,7 @@ export function Body({ embedded = false }: { embedded?: boolean }) {
     formatWeightChange,
     formatHeight,
     formatCircumference,
+    formatCircumferenceChange,
   };
 
   const controlChartRows = controlChartData?.items ?? [];

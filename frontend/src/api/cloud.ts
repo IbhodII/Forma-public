@@ -84,6 +84,10 @@ export async function setAutoBackupEnabled(
 
 export type OAuthProviderDebug = {
   configured: boolean;
+  setup_required?: boolean;
+  oauth_flow_mode?: string | null;
+  secret_required?: boolean;
+  pkce_available?: boolean;
   client_id_present: boolean;
   client_secret_present: boolean;
   client_id_preview?: string | null;

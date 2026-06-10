@@ -510,6 +510,18 @@ export interface ApplyMealPlanRangePayload {
   overwrite?: boolean;
 }
 
+export interface MealPlanApplyPreview {
+  plan_id: number;
+  plan_name: string;
+  phase: FoodPhase;
+  is_weekly: boolean;
+  start_date: string;
+  end_date: string;
+  dates: string[];
+  total_existing_entries: number;
+  days: { date: string; existing_entries: number }[];
+}
+
 export interface WeeklyScheduleItem {
   day_of_week: number;
   meal_plan_id: number | null;
@@ -697,10 +709,17 @@ export const foodApi = {
     const { data } = await apiClient.post<ApplyMealPlanResponse>(
       "/food/apply-meal-plan",
       {
-        apply_week: true,
-        replace_existing: true,
+        apply_week: false,
+        replace_existing: false,
         ...body,
       },
+    );
+    return data;
+  },
+  previewMealPlanApply: async (planId: number, body: ApplyMealPlanRangePayload) => {
+    const { data } = await apiClient.post<MealPlanApplyPreview>(
+      `/food/meal-plans/${planId}/apply-preview`,
+      body,
     );
     return data;
   },

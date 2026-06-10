@@ -1,5 +1,7 @@
 # API.md
 
+> **Archived.** Packaged API default port **18002** below is outdated — use **8000** (candidates 8000–8012). See [AUTH_PKCE_AUDIT.md](../AUTH_PKCE_AUDIT.md).
+
 REST API **MyHealthDashboard**.
 
 - **Base URL (dev):** `http://127.0.0.1:8000/api` или `:8002` (см. `.api-port`)

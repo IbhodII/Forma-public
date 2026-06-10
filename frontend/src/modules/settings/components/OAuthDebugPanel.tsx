@@ -56,6 +56,29 @@ function RedirectUriRow({ label, uri }: { label: string; uri: string }) {
   );
 }
 
+function providerStatusLabel(provider: OAuthProviderDebug): string {
+  if (provider.configured) {
+    return provider.oauth_flow_mode === "pkce" ? "PKCE готов" : "настроен";
+  }
+  if (provider.pkce_available || (provider.oauth_flow_mode === "pkce" && provider.client_id_present)) {
+    return "PKCE";
+  }
+  if (provider.setup_required && provider.secret_required !== false) {
+    return "нужен секрет";
+  }
+  return "не настроен";
+}
+
+function providerStatusClass(provider: OAuthProviderDebug): string {
+  if (provider.configured || provider.pkce_available) {
+    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+  }
+  if (provider.setup_required && provider.secret_required !== false) {
+    return "bg-orange-500/15 text-orange-800 dark:text-orange-200";
+  }
+  return "bg-amber-500/15 text-amber-800 dark:text-amber-200";
+}
+
 export function OAuthProviderDebugBlock({
   title,
   provider,
@@ -63,18 +86,21 @@ export function OAuthProviderDebugBlock({
   title: string;
   provider: OAuthProviderDebug;
 }) {
+  const secretLabel =
+    provider.secret_required === false
+      ? "не требуется (PKCE)"
+      : provider.client_secret_present
+        ? "✓"
+        : "✗";
+
   return (
     <div className="space-y-3 rounded-xl border border-[rgb(var(--app-border)/0.55)] p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{title}</span>
         <span
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            provider.configured
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-              : "bg-amber-500/15 text-amber-800 dark:text-amber-200"
-          }`}
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${providerStatusClass(provider)}`}
         >
-          {provider.configured ? "настроен" : "не настроен"}
+          {providerStatusLabel(provider)}
         </span>
         <span className="rounded-full bg-[rgb(var(--app-surface-subtle))] px-2 py-0.5 text-[11px] text-[rgb(var(--app-text-muted))]">
           source: {provider.redirect_source}
@@ -82,7 +108,10 @@ export function OAuthProviderDebugBlock({
       </div>
       <div className="flex flex-wrap gap-2 text-[11px] text-[rgb(var(--app-text-muted))]">
         <span>client_id: {provider.client_id_present ? "✓" : "✗"}</span>
-        <span>client_secret: {provider.client_secret_present ? "✓" : "✗"}</span>
+        <span>client_secret: {secretLabel}</span>
+        {provider.oauth_flow_mode ? (
+          <span>flow: {provider.oauth_flow_mode}</span>
+        ) : null}
         {provider.client_id_preview ? (
           <span>id: {provider.client_id_preview}</span>
         ) : null}

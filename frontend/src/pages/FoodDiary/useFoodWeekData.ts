@@ -1,9 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import type { DailyExpenditure } from "../../api/analytics";
-import { fetchDailyBraceletCalories, fetchWeekDailyExpenditure } from "../../api/analytics";
+import {
+  fetchDailyBraceletCalories,
+  fetchDailyExpenditure,
+  fetchWeekDailyExpenditure,
+} from "../../api/analytics";
 import { foodApi, type FoodWeekResponse } from "../../api/food";
 import { queryKeys } from "../../hooks/queryKeys";
+import { isToday, todayIso } from "../../shared/utils/dateHighlight";
 import { weekdayLabelsFromStart, weekDatesFromAnchor } from "../../shared/utils/weekCalendar";
+import {
+  resolveTodayExpenditureForecast,
+  sameWeekdayPreviousWeek,
+  type TodayExpenditureForecast,
+} from "./todayExpenditureForecast";
 
 export type WeekDayCell = {
   date: string;
@@ -20,12 +30,15 @@ export type WeekDayCell = {
   hasEntries: boolean;
   hasFallback: boolean;
   isSunday: boolean;
+  expenditureIsForecast?: boolean;
+  expenditureForecast?: TodayExpenditureForecast | null;
 };
 
 export function buildWeekDayCells(
   week: FoodWeekResponse,
   weekExpItems: DailyExpenditure[] | undefined,
   weekStartDay: number,
+  previousWeekSameDayExpenditure?: number | null,
 ): WeekDayCell[] {
   const labels = weekdayLabelsFromStart(weekStartDay);
   const dates = weekDatesFromAnchor(week.week_start, weekStartDay);
@@ -45,11 +58,28 @@ export function buildWeekDayCells(
     const hasEntries = intake > 0;
     const expItem = expByDate.get(date);
     const legacyExp = week.expenditure_by_day?.find((e) => e.date === date);
-    const expenditure =
+    const actualExpenditure =
       expItem?.total_expenditure ??
       legacyExp?.total_out_kcal ??
       day?.expenditure?.total_out_kcal ??
       null;
+
+    let expenditure = actualExpenditure;
+    let expenditureIsForecast = false;
+    let expenditureForecast: TodayExpenditureForecast | null = null;
+
+    if (isToday(date)) {
+      const forecast = resolveTodayExpenditureForecast({
+        currentEstimate: actualExpenditure,
+        previousWeekSameDay: previousWeekSameDayExpenditure,
+      });
+      if (forecast) {
+        expenditure = forecast.value;
+        expenditureIsForecast = true;
+        expenditureForecast = forecast;
+      }
+    }
+
     const balance =
       expenditure != null ? Math.round((intake - expenditure) * 10) / 10 : null;
     const d = new Date(`${date}T12:00:00`);
@@ -69,6 +99,8 @@ export function buildWeekDayCells(
       hasEntries,
       hasFallback: Boolean(expItem?.has_fallback),
       isSunday: day?.is_sunday ?? false,
+      expenditureIsForecast,
+      expenditureForecast,
     };
   });
 }
@@ -86,6 +118,18 @@ export function useFoodWeekData(
 
   const week = weekQuery.data;
   const weekEnd = week?.week_end ?? weekDatesFromAnchor(weekAnchor, weekStartDay)[6];
+  const weekDates = week ? weekDatesFromAnchor(week.week_start, weekStartDay) : [];
+  const today = todayIso();
+  const weekIncludesToday = weekDates.includes(today);
+  const previousWeekSameDay = sameWeekdayPreviousWeek(today);
+
+  const previousWeekExpQuery = useQuery({
+    queryKey: queryKeys.dailyExpenditure(previousWeekSameDay, phase, preferChest, null),
+    queryFn: () =>
+      fetchDailyExpenditure(previousWeekSameDay, phase, { preferChest }),
+    enabled: weekIncludesToday,
+    staleTime: 60_000,
+  });
 
   const weekExpQuery = useQuery({
     queryKey: queryKeys.weekDailyExpenditure(weekAnchor, phase, preferChest),
@@ -101,7 +145,12 @@ export function useFoodWeekData(
   });
 
   const cells = week
-    ? buildWeekDayCells(week, weekExpQuery.data?.items, weekStartDay)
+    ? buildWeekDayCells(
+        week,
+        weekExpQuery.data?.items,
+        weekStartDay,
+        previousWeekExpQuery.data?.total_expenditure,
+      )
     : [];
 
   return {

@@ -2,6 +2,7 @@ import {useMemo} from 'react';
 import {useWindowDimensions} from 'react-native';
 
 import {useDesignSystem} from '../../design-system/useDesignSystem';
+import {formatBodyMetricSigned, formatBodyMetricValue} from '../../utils/bodyMetrics';
 
 export const BODY_CHART_HEIGHT = 200;
 export const BODY_CHART_HEIGHT_EXPANDED = 228;
@@ -41,9 +42,8 @@ export function weightTrendSummary(points: BodyChartPoint[]): string | undefined
   const last = points[points.length - 1]!;
   const first = points[0]!;
   if (points.length === 1) {
-    return `Последнее: ${last.value.toFixed(1)} кг`;
+    return `Последнее: ${formatBodyMetricValue(last.value, ' кг')}`;
   }
   const delta = last.value - first.value;
-  const sign = delta >= 0 ? '+' : '';
-  return `Последнее ${last.value.toFixed(1)} кг · ${sign}${delta.toFixed(1)} за период`;
+  return `Последнее ${formatBodyMetricValue(last.value, ' кг')} · ${formatBodyMetricSigned(delta)} за период`;
 }

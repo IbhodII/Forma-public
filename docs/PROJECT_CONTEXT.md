@@ -1,7 +1,7 @@
 # Project Context
 
 Статусный документ для разработки, ревью и передачи проекта новому разработчику.  
-Срез: **2026-06-05**. Desktop schema: **`SCHEMA_VERSION` = 74** (`database/migrations.py`).
+Срез: **2026-06-09**. Desktop schema: **`SCHEMA_VERSION` = 80** (`database/migrations.py`; v078 cardio columns; v079 meal plans finalized in workouts + shared purge; v080 strength catalog in shared).
 
 См. также: [ARCHITECTURE.md](./ARCHITECTURE.md), [RELEASE_READINESS.md](./RELEASE_READINESS.md).
 
@@ -33,7 +33,7 @@
 
 | Mode | Где | Что важно |
 |------|-----|-----------|
-| `desktop_app` | Packaged Forma.exe | `FORMA_DATA_DIR`, API **18002**, `X-User-ID` из сессии |
+| `desktop_app` | Packaged Forma.exe | `FORMA_DATA_DIR`, API default **8000** (candidates 8000–8012, `%APPDATA%\Forma\forma-desktop-api.json`), `X-User-ID` из сессии; ships [`.env.desktop.public`](../.env.desktop.public) only |
 | `admin_browser` | `start.ps1` / Vite | Dev import, mini-DB export, HC debug, diagnostics |
 | `autonomous` | Mobile | Локальная БД; без ложного cloud pending UI |
 | `cloud` | Mobile | Local-first + FormaSync |
@@ -57,15 +57,16 @@
 
 ### Готово / стабильно
 
-- Shell и маршруты: `/home`, `/workouts`, `/food`, `/analytics`, `/body`, `/settings`, `/health-connect`, `/cycle`.
-- Settings hub (9 вкладок): профиль, подключения, данные/импорт, sync, аналитика, питание, велосипед, интерфейс, about.
+- Shell и маршруты: `/home`, `/workouts`, `/food`, `/analytics`, `/body`, `/settings`, `/cycle`; `/health-connect` → redirect на `/body?tab=health-connect`.
+- Settings hub: профиль, подключения, **данные** (локальная БД, импорт, бэкапы, **облако/FormaSync**), **sync** (приоритет источников), аналитика, питание, велосипед, интерфейс, about.
+- Desktop packaging: public OAuth template, seed DB (`desktop:prepare-seed`), secret checks (`desktop:check-secrets`); Google/Yandex **PKCE** by default — [AUTH_PKCE_AUDIT.md](./AUTH_PKCE_AUDIT.md).
 - Import → integrity → indexes → warmup → rollback; diagnostics overview.
 - Workouts / food / body CRUD; training load (CTL/ATL/TRIMP) с guards на пустой БД.
 - Workouts: normal/superset/circuit blocks, compact template structure editor, inline workout-data editing for supersets/circuits.
 - Prefill: latest actual exercise history wins for weight/reps/working sets/warmup; templates define composition/order/structure.
 - Exercise catalog hygiene: edit catalog row, archive used rows on delete, quick remove from current exercise set.
 - **Тело** hub: обзор + контрольные замеры + вес/шаги/сон/пульс/активность + HC tab.
-- FormaSync v1 (desktop + mobile cloud); Yandex OAuth + `link_user` для data scope.
+- FormaSync v1 (desktop + mobile cloud); Yandex/Google OAuth PKCE on public install; `link_user` для data scope при Yandex.
 - `npm run build` / `check:desktop-build` green.
 
 ### Experimental / partial / open
@@ -96,7 +97,8 @@
 - **Exercise groups / catalog** — user-scoped наборы там, где таблица имеет `user_id`; `all_exercises` поддерживает soft archive (`is_archived`) для безопасного удаления из поиска без изменения истории.
 - **Import merge** — копирование в staging с remap на **текущего** пользователя сессии; **replace** — `user_id_remap` после swap.
 - **Import в dev-браузере** — привязан к текущему `user_id` сессии, не только admin 1.
-- **Системные / shared** данные — `shared.db` (каталог продуктов и т.п.); не смешивать с user rows без явного merge rules.
+- **Reference / shared** — `shared.db`: продукты, stretching/strength catalogs, bike lookups; **без** meal plans, tokens, workouts (v079+). Публичная копия: `scripts/build_public_shared_db.py` + audit.
+- **Personal** — всё остальное в `workouts.db`; **никогда** не публиковать в GitHub.
 - **Yandex OAuth:** новый `users.id` без `link_user=1` → пустая история; Developer Tools → Data scope / rebind на user 1.
 
 Детали импорта: [DATABASE.md](./DATABASE.md).
@@ -118,6 +120,7 @@
 | Mobile active scope / roadmap | [MOBILE.md](./MOBILE.md), [ROADMAP.md](./ROADMAP.md) |
 | Cleanup / удалённый код (история) | [archive/CLEANUP.md](./archive/CLEANUP.md) |
 | Release / EXE checklist | [RELEASE_READINESS.md](./RELEASE_READINESS.md) |
+| Desktop packaging / OAuth | [PACKAGING_SECRETS.md](./PACKAGING_SECRETS.md), [AUTH_PKCE_AUDIT.md](./AUTH_PKCE_AUDIT.md), [POLAR_SETUP.md](./POLAR_SETUP.md) |
 | Changelog | [CHANGELOG.md](./CHANGELOG.md) |
 
 ---

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   foodApi,
@@ -20,8 +20,15 @@ import { queryKeys } from "../../hooks/queryKeys";
 import { useWeekStartDay } from "../../hooks/useWeekStartDay";
 import { weekdayLabelsFromStart } from "../../shared/utils/weekCalendar";
 import { MEAL_TYPE_OPTIONS, normalizeMealType } from "./FoodEntryModal";
+import { formatDateRu, todayIso } from "../../utils/format";
 import { parseApiError } from "../../utils/validation";
+import { addCalendarDays, mealPlanApplyRange } from "./mealPlanApplyUtils";
 import { WeeklyScheduleTab } from "./WeeklyScheduleTab";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE_WIDE,
+} from "./mealModalLayout";
 
 const PHASE_TABS = [
   { id: "cut", label: "Сушка" },
@@ -80,10 +87,6 @@ type EditorState = {
   activeDay: number;
   days: DayDraft[];
 };
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function newItem(product?: FoodProduct): ItemDraft {
   return {
@@ -191,8 +194,8 @@ function ProductLine({
   }, [products, search]);
 
   return (
-    <div className="flex flex-wrap gap-2 items-end border-b border-slate-100 dark:border-slate-800 pb-2">
-      <label className="text-xs flex-1 min-w-0 sm:min-w-[140px]">
+    <div className="meal-plan-product-line">
+      <label className="text-xs min-w-0">
         Продукт
         <input
           className="input-field mt-1 w-full text-sm"
@@ -224,7 +227,7 @@ function ProductLine({
           ))}
         </datalist>
       </label>
-      <label className="text-xs w-full sm:w-24">
+      <label className="text-xs">
         г
         <input
           type="number"
@@ -237,7 +240,7 @@ function ProductLine({
       </label>
       <button
         type="button"
-        className="text-xs text-red-600 pb-1 min-h-[44px] sm:min-h-0"
+        className="text-xs text-red-600 min-h-[44px] sm:min-h-0 self-end"
         onClick={onRemove}
       >
         Удалить
@@ -306,8 +309,24 @@ function MealPlanEditorModal({
             ? "Редактировать рацион"
             : "Новый рацион"
       }
-      size="xl"
+      size={MEAL_MODAL_SIZE_WIDE}
+      className={MEAL_MODAL_PANEL_CLASS}
       zIndex={60}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!editor.name.trim() || saving}
+            onClick={onSave}
+          >
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
+        </>
+      }
     >
         {formError && <ErrorAlert message={formError} />}
         {isTemplateEdit ? (
@@ -387,7 +406,7 @@ function MealPlanEditorModal({
             )}
           </div>
         )}
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm font-medium">
               Приёмы пищи
@@ -408,7 +427,7 @@ function MealPlanEditorModal({
           {(activeDay?.meals ?? []).map((meal) => (
             <div
               key={meal.key}
-              className="border rounded-lg p-3 bg-slate-50 dark:bg-slate-800/50 space-y-2"
+              className="border rounded-lg p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/50 space-y-3"
             >
               <div className="flex flex-wrap gap-2 items-center">
                 <select
@@ -493,19 +512,6 @@ function MealPlanEditorModal({
             </div>
           ))}
         </div>
-        <div className="flex flex-wrap gap-2 pt-2">
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!editor.name.trim() || saving}
-            onClick={onSave}
-          >
-            {saving ? "Сохранение…" : "Сохранить"}
-          </button>
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Отмена
-          </button>
-        </div>
     </ModalShell>
   );
 }
@@ -520,21 +526,45 @@ function MealPlanApplyModal({
   onApplied: () => void;
 }) {
   const { showToast } = useToast();
+  const isWeekly = Boolean(plan.is_weekly);
   const [startDate, setStartDate] = useState(todayIso());
+  const [endDate, setEndDate] = useState(() => addCalendarDays(todayIso(), 6));
   const [overwrite, setOverwrite] = useState(false);
 
-  const endPreview = useMemo(() => {
-    if (!plan.is_weekly) return startDate;
-    const d = new Date(`${startDate}T12:00:00`);
-    d.setDate(d.getDate() + 6);
-    return d.toISOString().slice(0, 10);
-  }, [plan.is_weekly, startDate]);
+  const applyRange = useMemo(
+    () => mealPlanApplyRange(startDate, isWeekly, isWeekly ? endDate : null),
+    [startDate, endDate, isWeekly],
+  );
+
+  const previewQuery = useQuery({
+    queryKey: [
+      "food",
+      "meal-plan-apply-preview",
+      plan.id,
+      applyRange.start,
+      applyRange.end,
+      plan.phase,
+    ],
+    queryFn: () =>
+      foodApi.previewMealPlanApply(plan.id, {
+        start_date: applyRange.start,
+        end_date: applyRange.end,
+        phase: plan.phase,
+      }),
+    placeholderData: keepPreviousData,
+  });
+
+  const preview = previewQuery.data;
+  const existingTotal = preview?.total_existing_entries ?? 0;
+  const displayStart = preview?.start_date ?? applyRange.start;
+  const displayEnd = preview?.end_date ?? applyRange.end;
+  const displayDates = preview?.dates?.length ? preview.dates : applyRange.dates;
 
   const applyMut = useMutation({
     mutationFn: () =>
       foodApi.applyMealPlanRange(plan.id, {
-        start_date: startDate,
-        end_date: plan.is_weekly ? endPreview : startDate,
+        start_date: applyRange.start,
+        end_date: applyRange.end,
         phase: plan.phase,
         overwrite,
       }),
@@ -555,7 +585,8 @@ function MealPlanApplyModal({
       onClose={onClose}
       dataEntry
       title={`Применить «${plan.name}»`}
-      size="sm"
+      size="md"
+      className={MEAL_MODAL_PANEL_CLASS}
       zIndex={60}
       footer={
         <>
@@ -568,32 +599,100 @@ function MealPlanApplyModal({
             disabled={applyMut.isPending}
             onClick={() => applyMut.mutate()}
           >
-            {applyMut.isPending ? "Применение…" : "Применить"}
+            {applyMut.isPending ? "Применение…" : overwrite ? "Заменить и применить" : "Добавить к дневнику"}
           </button>
         </>
       }
     >
-        <label className="text-sm block">
-          Дата начала
-          <input
-            type="date"
-            className="input-field mt-1 w-full"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </label>
-        {plan.is_weekly && (
-          <p className="text-xs text-slate-500">
-            Недельный рацион: дни с {startDate} по {endPreview} (по day_offset в плане).
+        <div className={isWeekly ? "grid gap-3 sm:grid-cols-2" : ""}>
+          <label className="text-sm block">
+            {isWeekly ? "С даты (день 1 рациона)" : "Дата"}
+            <input
+              type="date"
+              className="input-field mt-1 w-full"
+              value={startDate}
+              max={isWeekly ? endDate : undefined}
+              onChange={(e) => {
+                const next = e.target.value;
+                setStartDate(next);
+                if (isWeekly) {
+                  setEndDate(addCalendarDays(next, 6));
+                }
+              }}
+            />
+          </label>
+          {isWeekly ? (
+            <label className="text-sm block">
+              По дату (включительно)
+              <input
+                type="date"
+                className="input-field mt-1 w-full"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </label>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-[rgb(var(--app-border)/0.45)] bg-[rgb(var(--app-surface-subtle)/0.35)] p-3 text-sm space-y-2">
+          <p>
+            Будет применено:{" "}
+            <span className="font-medium tabular-nums">
+              {formatDateRu(displayStart)} — {formatDateRu(displayEnd)}
+            </span>
+            {isWeekly ? (
+              <span className="text-[rgb(var(--app-text-muted))]">
+                {" "}
+                · {displayDates.length}{" "}
+                {displayDates.length === 1
+                  ? "день"
+                  : displayDates.length < 5
+                    ? "дня"
+                    : "дней"}
+              </span>
+            ) : null}
           </p>
-        )}
-        <label className="flex items-center gap-2 text-sm">
+          {isWeekly && displayDates.length > 0 ? (
+            <ul className="text-xs text-[rgb(var(--app-text-muted))] grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+              {displayDates.map((iso, i) => (
+                <li key={iso}>
+                  {i + 1}. {formatDateRu(iso)}
+                  {preview?.days.find((d) => d.date === iso)?.existing_entries
+                    ? ` · ${preview!.days.find((d) => d.date === iso)!.existing_entries} зап.`
+                    : ""}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {existingTotal > 0 && !overwrite ? (
+            <p className="text-amber-800 dark:text-amber-200 text-xs leading-snug">
+              В выбранном периоде уже есть {existingTotal} записей. Они сохранятся; из рациона
+              добавятся только новые позиции (без дублей).
+            </p>
+          ) : null}
+          {existingTotal > 0 && overwrite ? (
+            <p className="text-red-700 dark:text-red-300 text-xs leading-snug">
+              Будут удалены все {existingTotal} существующих записей за эти дни перед применением
+              рациона.
+            </p>
+          ) : null}
+        </div>
+
+        <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
+            className="mt-1"
             checked={overwrite}
             onChange={(e) => setOverwrite(e.target.checked)}
           />
-          Заменить существующие записи за эти дни
+          <span>
+            Заменить существующие записи за выбранные дни
+            <span className="block text-xs text-[rgb(var(--app-text-muted))] mt-0.5">
+              Без галочки: ручные записи и другие приёмы сохраняются, дубликаты из рациона не
+              добавляются повторно.
+            </span>
+          </span>
         </label>
     </ModalShell>
   );

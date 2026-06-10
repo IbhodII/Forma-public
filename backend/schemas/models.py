@@ -1098,7 +1098,12 @@ class UserProfileUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     display_name: Optional[str] = None
-    max_deficit_per_kg_fat: Optional[float] = Field(None, ge=5)
+    max_deficit_per_kg_fat: Optional[float] = Field(
+        None,
+        ge=5,
+        le=70,
+        description="Макс. безопасный дефицит ккал/кг жира в день (5–70)",
+    )
     max_physiological_deficit_per_kg_fat: Optional[float] = Field(None, ge=50, le=100)
     target_bulk_grams_per_week: Optional[float] = Field(None, ge=50, le=2000)
     use_chest_strap_priority: Optional[bool] = None
@@ -2035,12 +2040,24 @@ class WeeklyScheduleItem(BaseModel):
     meal_plan_name: Optional[str] = None
 
 
+class MealPlanApplyPreviewResponse(BaseModel):
+    plan_id: int
+    plan_name: str
+    phase: str
+    is_weekly: bool
+    start_date: str
+    end_date: str
+    dates: list[str]
+    total_existing_entries: int
+    days: list[dict[str, Any]]
+
+
 class ApplyMealPlanRequest(BaseModel):
     plan_id: int = Field(..., gt=0)
     date: str
     phase: str = "cut"
-    apply_week: bool = True
-    replace_existing: bool = True
+    apply_week: bool = False
+    replace_existing: bool = False
 
     @field_validator("date")
     @classmethod
@@ -2251,6 +2268,10 @@ class OAuthProviderDebug(BaseModel):
     """OAuth-конфигурация одного провайдера (без секретов)."""
 
     configured: bool = False
+    setup_required: bool = False
+    oauth_flow_mode: Optional[str] = None
+    secret_required: bool = True
+    pkce_available: bool = False
     client_id_present: bool = False
     client_secret_present: bool = False
     client_id_preview: Optional[str] = None

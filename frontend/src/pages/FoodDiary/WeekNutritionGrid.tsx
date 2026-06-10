@@ -35,10 +35,6 @@ function cellTone(
   return "bg-[rgb(var(--app-surface))] border-[rgb(var(--app-border))]";
 }
 
-function formatGrams(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
-
 export function WeekNutritionGrid({
   cells,
   phase,
@@ -52,7 +48,7 @@ export function WeekNutritionGrid({
   fatKg: number | null;
   onDayClick: (date: string) => void;
 }) {
-  const { formatEnergy } = useUnits();
+  const { formatEnergy, formatFoodWeight } = useUnits();
 
   const totals = cells.reduce(
     (acc, c) => {
@@ -124,11 +120,11 @@ export function WeekNutritionGrid({
                 </div>
                 <div className="space-y-0.5 text-[11px] leading-snug tabular-nums">
                   <p>
-                    Б:{formatGrams(cell.protein)} Ж:{formatGrams(cell.fat)} У:
-                    {formatGrams(cell.carbs)}
+                    Б:{formatFoodWeight(cell.protein)} Ж:{formatFoodWeight(cell.fat)} У:
+                    {formatFoodWeight(cell.carbs)}
                   </p>
                   <p className="text-[rgb(var(--app-text-muted))]">
-                    Клетч.: {formatGrams(cell.fiber)} г
+                    Клетч.: {formatFoodWeight(cell.fiber)}
                   </p>
                   <p>
                     <span className="text-[rgb(var(--app-text-muted))]">Ккал </span>
@@ -136,11 +132,20 @@ export function WeekNutritionGrid({
                       {cell.hasEntries ? formatEnergy(cell.intake) : "—"}
                     </span>
                   </p>
-                  {cell.expenditure != null && (
+                  {cell.expenditure != null && cell.expenditureIsForecast && cell.expenditureForecast ? (
+                    <div className="food-expenditure-forecast food-expenditure-forecast--compact">
+                      <p className="food-expenditure-forecast__label">
+                        {cell.expenditureForecast.label}
+                      </p>
+                      <p className="food-expenditure-forecast__value tabular-nums">
+                        {formatEnergy(cell.expenditure)}
+                      </p>
+                    </div>
+                  ) : cell.expenditure != null ? (
                     <p className="text-[rgb(var(--app-text-muted))]">
                       Расх. {formatEnergy(cell.expenditure)}
                     </p>
-                  )}
+                  ) : null}
                   <p
                     className={`font-semibold flex items-center gap-0.5 ${
                       cell.balance == null
@@ -203,22 +208,22 @@ export function WeekNutritionGrid({
             <tr>
               <td className="py-2 px-3 text-[rgb(var(--app-text-muted))]">7 дней</td>
               <td className="py-2 px-3 text-right tabular-nums text-xs">
-                {formatGrams(totals.protein)} / {formatGrams(totals.fat)} /{" "}
-                {formatGrams(totals.carbs)}
+                {formatFoodWeight(totals.protein)} / {formatFoodWeight(totals.fat)} /{" "}
+                {formatFoodWeight(totals.carbs)}
               </td>
               <td className="py-2 px-3 text-right tabular-nums font-medium">
-                {formatGrams(totals.fiber)} г
+                {formatFoodWeight(totals.fiber)}
               </td>
               <td className="py-2 px-3 text-right tabular-nums font-medium">
                 {formatEnergy(totals.intake)}
               </td>
               <td className="py-2 px-3 text-right tabular-nums text-xs">
                 <span className="block">
-                  Б:{formatGrams(avg.protein)} Ж:{formatGrams(avg.fat)} У:
-                  {formatGrams(avg.carbs)}
+                  Б:{formatFoodWeight(avg.protein)} Ж:{formatFoodWeight(avg.fat)} У:
+                  {formatFoodWeight(avg.carbs)}
                 </span>
                 <span className="text-[rgb(var(--app-text-muted))]">
-                  клетч. {formatGrams(avg.fiber)} г · {formatEnergy(Math.round(avg.intake))}
+                  клетч. {formatFoodWeight(avg.fiber)} · {formatEnergy(Math.round(avg.intake))}
                 </span>
                 {avgExp != null && (
                   <span className="block text-[rgb(var(--app-text-muted))]">

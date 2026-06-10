@@ -1,7 +1,7 @@
 {
   "name": "health-dashboard-frontend",
   "private": true,
-  "version": "0.69.0",
+  "version": "0.74.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,11 +10,15 @@
     "preview": "vite preview",
     "desktop:dev": "electron .",
     "desktop:build:web": "cross-env VITE_CLIENT_MODE=desktop_app vite build --base=./",
-    "desktop:build:backend": "..\\venv\\Scripts\\python.exe -m PyInstaller ../backend.spec --clean --noconfirm --distpath backend_bin --workpath build/backend_py",
+    "desktop:prepare-seed": "..\\venv\\Scripts\\python.exe ..\\scripts\\prepare_packaging_seed.py",
+    "desktop:check-secrets": "..\\venv\\Scripts\\python.exe ..\\scripts\\check_packaging_secrets.py",
+    "desktop:build:backend": "npm run desktop:prepare-seed && ..\\venv\\Scripts\\python.exe -m PyInstaller ../backend.spec --clean --noconfirm --distpath backend_bin --workpath build/backend_py",
     "desktop:build:all": "npm run desktop:build:web && npm run desktop:build:backend",
-    "desktop:pack": "npm run desktop:build:all && electron-builder --dir",
-    "desktop:dist": "npm run desktop:build:all && electron-builder",
-    "desktop:postinstall": "electron-builder install-app-deps"
+    "desktop:pack": "npm run desktop:build:all && npm run desktop:check-secrets && electron-builder --dir",
+    "desktop:dist": "npm run desktop:build:all && npm run desktop:check-secrets && electron-builder",
+    "desktop:postinstall": "electron-builder install-app-deps",
+    "test": "vitest run",
+    "test:units": "vitest run src/utils/americanUnits.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -58,6 +62,7 @@
     "tailwindcss": "^3.4.16",
     "typescript": "~5.6.3",
     "vite": "^6.0.3",
+    "vitest": "^3.2.6",
     "wait-on": "^8.0.3"
   },
   "build": {
@@ -67,7 +72,7 @@
     "buildDependenciesFromSource": false,
     "asar": true,
     "directories": {
-      "output": "release66"
+      "output": "release74"
     },
     "files": [
       "dist/**/*",
@@ -80,7 +85,7 @@
         "to": "backend.exe"
       },
       {
-        "from": "../.env",
+        "from": "../.env.desktop.public",
         "to": ".env"
       }
     ],

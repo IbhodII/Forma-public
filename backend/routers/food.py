@@ -8,6 +8,7 @@ from backend.schemas.models import (
     ApplyMealPlanRangeRequest,
     ApplyMealPlanRequest,
     ApplyMealPlanResponse,
+    MealPlanApplyPreviewResponse,
     ApplyTemplateRequest,
     ApplyTemplateResponse,
     FoodClearDayResponse,
@@ -267,6 +268,22 @@ def api_delete_meal_plan(plan_id: int):
 )
 def api_get_meal_plan(plan_id: int):
     return MealPlanDetail(**food_service.get_meal_plan(plan_id))
+
+
+@router.post(
+    "/meal-plans/{plan_id}/apply-preview",
+    response_model=MealPlanApplyPreviewResponse,
+    summary="Предпросмотр применения рациона (диапазон и существующие записи)",
+)
+def api_preview_meal_plan_apply(plan_id: int, body: ApplyMealPlanRangeRequest):
+    return MealPlanApplyPreviewResponse(
+        **food_service.preview_meal_plan_range(
+            plan_id,
+            body.start_date,
+            body.end_date,
+            body.phase,
+        )
+    )
 
 
 @router.post(

@@ -5,6 +5,7 @@ import {AnalyticsEmptyState} from '../analytics/AnalyticsEmptyState';
 import {ChartCard} from '../analytics/ChartCard';
 import {MobileLineChart} from '../analytics/MobileLineChart';
 import {useDesignSystem} from '../../design-system/useDesignSystem';
+import {formatBodyMetricValue} from '../../utils/bodyMetrics';
 import {
   BODY_CHART_HEIGHT,
   BODY_CHART_HEIGHT_EXPANDED,
@@ -52,7 +53,7 @@ export function BodyTrendChart({title, summary, points, unit = 'кг', defaultEx
           <MobileLineChart
             series={series}
             height={chartHeight}
-            yFormatter={v => `${v.toFixed(1)}${unit ? ` ${unit}` : ''}`}
+            yFormatter={v => formatBodyMetricValue(v, unit ? ` ${unit}` : '')}
           />
         </View>
       )}

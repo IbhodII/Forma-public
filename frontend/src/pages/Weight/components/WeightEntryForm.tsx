@@ -115,7 +115,7 @@ export function WeightEntryForm({
         Вес, кг
         <input
           type="number"
-          step="0.1"
+          step="0.01"
           value={weight}
           onChange={(e) => setWeight(e.target.value)}
           className="input-field mt-1"
@@ -126,7 +126,7 @@ export function WeightEntryForm({
         Жир, %
         <input
           type="number"
-          step="0.1"
+          step="0.01"
           value={fat}
           onChange={(e) => setFat(e.target.value)}
           disabled={onlyWeight}

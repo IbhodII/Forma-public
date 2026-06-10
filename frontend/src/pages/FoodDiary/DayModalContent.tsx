@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { fetchDailyExpenditure, saveDailyBraceletCalories } from "../../api/analytics";
+import { isToday } from "../../shared/utils/dateHighlight";
+import { ExpenditureForecastNote } from "./ExpenditureForecastNote";
+import {
+  resolveTodayExpenditureForecast,
+  sameWeekdayPreviousWeek,
+} from "./todayExpenditureForecast";
 import {
   foodApi,
   type FoodEntry,
@@ -124,6 +130,17 @@ export function DayModalContent({
         preferChest,
         braceletCalories: braceletKcal,
       }),
+  });
+
+  const viewingToday = isToday(date);
+  const previousWeekSameDay = sameWeekdayPreviousWeek(date);
+
+  const { data: previousWeekExp } = useQuery({
+    queryKey: queryKeys.dailyExpenditure(previousWeekSameDay, phase, preferChest, null),
+    queryFn: () =>
+      fetchDailyExpenditure(previousWeekSameDay, phase, { preferChest }),
+    enabled: viewingToday,
+    staleTime: 60_000,
   });
 
   const invalidateDay = useCallback(
@@ -250,7 +267,17 @@ export function DayModalContent({
   };
 
   const totals = data?.daily_totals;
-  const totalBurn = dailyExp?.total_expenditure ?? data?.expenditure.total_burn ?? null;
+  const actualBurn =
+    dailyExp?.total_expenditure ?? data?.expenditure.total_burn ?? null;
+  const expenditureForecast = viewingToday
+    ? resolveTodayExpenditureForecast({
+        currentEstimate: actualBurn,
+        previousWeekSameDay: previousWeekExp?.total_expenditure,
+      })
+    : null;
+  const totalBurn = viewingToday
+    ? (expenditureForecast?.value ?? actualBurn)
+    : actualBurn;
   const balance =
     totalBurn != null && totals
       ? Math.round((totals.calories - totalBurn) * 10) / 10
@@ -371,17 +398,31 @@ export function DayModalContent({
               onPreferChestChange={onPreferChestChange}
             />
 
-            <div className="card-panel space-y-2 text-sm">
+            <div
+              className={`card-panel space-y-2 text-sm ${
+                expenditureForecast ? "food-expenditure-forecast-panel" : ""
+              }`}
+            >
               <h4 className="font-medium">Расход и баланс</h4>
               {dailyExpLoading && (
                 <p className="text-xs text-[rgb(var(--app-text-muted))]">Пересчёт…</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <p className="text-[rgb(var(--app-text-muted))]">Расход</p>
-                  <p className="font-semibold tabular-nums">
-                    {totalBurn != null ? formatEnergy(totalBurn) : "—"}
-                  </p>
+                  {expenditureForecast && totalBurn != null ? (
+                    <ExpenditureForecastNote
+                      forecast={expenditureForecast}
+                      value={totalBurn}
+                      formatEnergy={formatEnergy}
+                    />
+                  ) : (
+                    <>
+                      <p className="text-[rgb(var(--app-text-muted))]">Расход</p>
+                      <p className="font-semibold tabular-nums">
+                        {totalBurn != null ? formatEnergy(totalBurn) : "—"}
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div>
                   <p className="text-[rgb(var(--app-text-muted))]">Баланс</p>

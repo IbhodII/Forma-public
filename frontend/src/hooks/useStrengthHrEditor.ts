@@ -1,35 +1,18 @@
 import { useCallback, useMemo, useReducer } from "react";
 import type { HeartRatePoint, StrengthHrDetectedBlock, StrengthHrSetMetrics } from "../types";
 import type {
-  BlockKind,
   StrengthHrEditableBlock,
   StrengthHrEditorAction,
   StrengthHrEditorState,
 } from "../types/strengthHrEditor";
 import {
   findDuplicateSetAssignments,
+  isValidBlockInterval,
+  prepareEditableBlocks,
   recalcAllBlockMetrics,
   reindexBlocks,
   validateBlockLayout,
 } from "../utils/strengthHrBlockMetrics";
-
-function toEditable(
-  block: StrengthHrDetectedBlock,
-  autoBlock?: StrengthHrDetectedBlock,
-): StrengthHrEditableBlock {
-  const kind = (block as StrengthHrDetectedBlock & { kind?: BlockKind }).kind ?? "set";
-  const auto = autoBlock ?? block;
-  return {
-    ...block,
-    block_id: block.block_id ?? block.block_index,
-    kind: kind === "rest" || kind === "noise" ? kind : "set",
-    assigned_order_index: block.matched_order_index,
-    isManual: false,
-    source_auto_block_index: auto.block_index,
-    original_auto_start_sec: auto.start_sec,
-    original_auto_end_sec: auto.end_sec,
-  };
-}
 
 function clearMatch(block: StrengthHrEditableBlock): StrengthHrEditableBlock {
   return {
@@ -105,27 +88,37 @@ function reducer(
     blocks: StrengthHrEditableBlock[],
     selectedBlockId = state.selectedBlockId,
   ): StrengthHrEditorState => {
-    const recalced = recalcAllBlockMetrics(points, blocks);
-    const layoutIssues = validateBlockLayout(recalced);
-    const dupes = findDuplicateSetAssignments(recalced);
-    const warnings: string[] = [];
-    if (layoutIssues.length) {
-      warnings.push("Проверьте границы блоков: есть пересечения или слишком короткие интервалы.");
+    try {
+      const recalced = recalcAllBlockMetrics(points, blocks);
+      const layoutIssues = validateBlockLayout(recalced);
+      const dupes = findDuplicateSetAssignments(recalced);
+      const warnings: string[] = [];
+      if (layoutIssues.length) {
+        warnings.push("Проверьте границы блоков: есть пересечения или слишком короткие интервалы.");
+      }
+      if (dupes.length) {
+        warnings.push("Один подход назначен на несколько блоков — сопоставление частичное.");
+      }
+      const stillSelected =
+        selectedBlockId != null && recalced.some((b) => b.block_id === selectedBlockId)
+          ? selectedBlockId
+          : null;
+      return {
+        ...state,
+        blocks: recalced,
+        dirty: true,
+        warnings,
+        selectedBlockId: stillSelected,
+      };
+    } catch {
+      return {
+        ...state,
+        warnings: [
+          ...state.warnings,
+          "Не удалось пересчитать метрики блока — проверьте границы и данные пульса.",
+        ],
+      };
     }
-    if (dupes.length) {
-      warnings.push("Один подход назначен на несколько блоков — сопоставление частичное.");
-    }
-    const stillSelected =
-      selectedBlockId != null && recalced.some((b) => b.block_id === selectedBlockId)
-        ? selectedBlockId
-        : null;
-    return {
-      ...state,
-      blocks: recalced,
-      dirty: true,
-      warnings,
-      selectedBlockId: stillSelected,
-    };
   };
 
   switch (action.type) {
@@ -145,8 +138,23 @@ function reducer(
         warnings: [],
         selectedBlockId: null,
       };
-    case "selectBlock":
+    case "selectBlock": {
+      if (action.blockId == null || !Number.isFinite(action.blockId)) {
+        return { ...state, selectedBlockId: null };
+      }
+      const exists = state.blocks.some((b) => b.block_id === action.blockId);
+      if (!exists) {
+        return {
+          ...state,
+          selectedBlockId: null,
+          warnings: [
+            ...state.warnings,
+            "Выбранный блок не найден — возможно, данные устарели. Обновите анализ пульса.",
+          ],
+        };
+      }
       return { ...state, selectedBlockId: action.blockId };
+    }
     case "clearSelection":
       return { ...state, selectedBlockId: null };
     case "moveBoundary": {
@@ -264,60 +272,63 @@ export function useStrengthHrEditor(
   initialBlocks: StrengthHrDetectedBlock[],
   autoBlocks: StrengthHrDetectedBlock[],
   points: HeartRatePoint[],
-  sets: StrengthHrSetMetrics[],
+  sets: StrengthHrSetMetrics[] | null | undefined,
 ) {
-  const autoByIndex = useMemo(() => {
-    const map = new Map<number, StrengthHrDetectedBlock>();
-    for (const b of autoBlocks) {
-      map.set(b.block_index, b);
+  const safeSets = sets ?? [];
+  const safePoints = points ?? [];
+
+  const prepared = useMemo(
+    () => prepareEditableBlocks(initialBlocks, autoBlocks, safePoints),
+    [initialBlocks, autoBlocks, safePoints],
+  );
+
+  const autoPrepared = useMemo(
+    () => prepareEditableBlocks(autoBlocks, autoBlocks, safePoints),
+    [autoBlocks, safePoints],
+  );
+
+  const bootstrapWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (prepared.skipped > 0) {
+      warnings.push(
+        `Пропущено ${prepared.skipped} блок(ов) с некорректными границами — их нельзя редактировать на графике.`,
+      );
     }
-    return map;
-  }, [autoBlocks]);
-
-  const autoEditable = useMemo(
-    () => autoBlocks.map((b) => toEditable(b, b)),
-    [autoBlocks],
-  );
-
-  const initialEditable = useMemo(
-    () =>
-      initialBlocks.map((b) => {
-        const autoMatch =
-          autoByIndex.get(b.block_index) ??
-          autoBlocks.find((a) => a.start_sec === b.start_sec && a.end_sec === b.end_sec);
-        return toEditable(b, autoMatch);
-      }),
-    [initialBlocks, autoByIndex, autoBlocks],
-  );
+    if (!prepared.blocks.length && initialBlocks.length > 0) {
+      warnings.push("Нет пригодных для редактирования блоков — проверьте анализ пульса.");
+    }
+    return warnings;
+  }, [prepared.skipped, prepared.blocks.length, initialBlocks.length]);
 
   const [state, dispatchBase] = useReducer(reducer, {
-    blocks: initialEditable,
-    autoBlocks: autoEditable,
+    blocks: prepared.blocks,
+    autoBlocks: autoPrepared.blocks,
     dirty: false,
-    warnings: [],
+    warnings: bootstrapWarnings,
     selectedBlockId: null,
   });
 
   const dispatch = useCallback(
     (action: StrengthHrEditorAction) => {
-      dispatchBase({ ...action, points, sets } as StrengthHrEditorAction & {
+      dispatchBase({ ...action, points: safePoints, sets: safeSets } as StrengthHrEditorAction & {
         points: HeartRatePoint[];
         sets: StrengthHrSetMetrics[];
       });
     },
-    [points, sets],
+    [safePoints, safeSets],
   );
 
   const loadBlocks = useCallback(
     (blocks: StrengthHrEditableBlock[]) => {
+      const valid = blocks.filter(isValidBlockInterval);
       dispatchBase({
         type: "loadBlocks",
-        blocks: recalcAllBlockMetrics(points, blocks),
-        points,
-        sets,
+        blocks: recalcAllBlockMetrics(safePoints, reindexBlocks(valid)),
+        points: safePoints,
+        sets: safeSets,
       } as StrengthHrEditorAction & { points: HeartRatePoint[]; sets: StrengthHrSetMetrics[] });
     },
-    [points, sets],
+    [safePoints, safeSets],
   );
 
   const selectedBlock = useMemo(

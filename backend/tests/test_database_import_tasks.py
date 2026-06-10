@@ -558,6 +558,25 @@ def test_stale_import_lock_does_not_block_api(import_env):
     assert not lock.is_file()
 
 
+def test_orphan_import_lock_with_live_pid_does_not_block_api(import_env):
+    """Lock left after worker exit must not block API while uvicorn PID is still alive."""
+    import os
+
+    lock = dit.import_lock_path()
+    lock.write_text(
+        json.dumps(
+            {
+                "task_id": "orphan-live-pid",
+                "pid": os.getpid(),
+                "started_at": "2026-06-03T12:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert dit.is_database_import_in_progress() is False
+    assert not lock.is_file()
+
+
 def test_process_pid_alive_current_and_dead():
     import os
 

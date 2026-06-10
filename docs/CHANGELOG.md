@@ -1,12 +1,12 @@
 # CHANGELOG
 
 История значимых изменений **MyHealthDashboard / Forma**.  
-Версия установщика десктопа: `frontend/package.json` (текущая desktop build line: **0.69.0**).
+Версия установщика десктопа: `frontend/package.json` (текущая public desktop build line: **0.74.0**, output `release74`).
 
 Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).  
 Схема БД: `SCHEMA_VERSION` в `database/migrations.py` — сверять с кодом.
 
-Last updated: **2026-06-05**.
+Last updated: **2026-06-09**.
 
 ---
 
@@ -27,11 +27,51 @@ Last updated: **2026-06-05**.
 
 ## [Unreleased]
 
+### Documentation reconciliation and release 0.74 prep (2026-06-09)
+
+- **Docs:** reconciled Public docs against Dev without overwriting Public-only release/audit reports.
+- **Schema docs:** confirmed Public `SCHEMA_VERSION=80` (`v078` cardio duration/distance, `v079` meal-plan finalization, `v080` shared strength catalog).
+- **OAuth docs:** clarified desktop Google/Yandex PKCE default, redirect URI runtime port alignment, Yandex app-folder scopes, and Polar confidential-client exception.
+- **Packaging docs:** documented `packaging/seed/` generation, public `shared.db` audit, `httpx`/`httpcore` bundle guard, and forbidden secret checks.
+- **Units docs:** documented current `metric` / `american` profile flag and presentation-only conversion layer.
+- **Report:** added `DOCUMENTATION_SYNC_REPORT.md`.
+
+---
+
+## [0.69.0] — 2026-06-09
+
+### Strength HR block editing stability
+
+- **Fix:** clicking blocks in the strength HR graph editor no longer crashes the desktop app or leaves dev stuck on loading spinners.
+- **Frontend:** safe block palette indexing (`block_index` 0 / malformed intervals), normalized editable blocks, guarded set mapping, Plotly axis-mapping dedupe, and Plotly load-failure message instead of infinite chart spinner.
+- **UX:** invalid or missing block data shows a fallback message; loading indicators only appear when cached HR/analysis data is absent.
+
+### Running route map tooltip telemetry (2026-06-09)
+
+- **Fix:** running route tooltips showed clock time only while pace colorization worked — telemetry was in `workout_sensors` / `workout_heart_rate` but not merged into running GeoJSON points.
+- **Backend:** `merge_telemetry_into_track_points`, improved `enrich_geojson_from_sensors`, `get_points` / `get_gps` always merge when properties incomplete.
+- **Frontend:** shared `RoutePointTelemetry` component; `enrichTrackPoints` derives GPS speed client-side as fallback.
+- **Tests:** `test_bike_track_telemetry.py`.
+
+### Exercise category separation & catalog cleanup (2026-06-09)
+
+- **Schema v077:** `exercise_category` (`strength` \| `stretching`) on `shared.strength_exercises`, `shared.stretching_exercises`, and `user_strength_exercises`.
+- **Migration:** backfills categories from free-exercise-db JSON + stretching library; removes unreferenced English bulk import from strength shared catalog; preserves names referenced in workouts, templates, and exercise sets.
+- **Queries:** strength APIs/catalog filter `exercise_category = strength`; stretching APIs filter `exercise_category = stretching` (data-level, not UI-only).
+- **Imports:** `import_free_exercise_db.py` and seed helpers tag stretching rows explicitly; automatic free-exercise-db seeding into strength catalog disabled.
+- **Tests:** `test_exercise_category_filter.py`.
+- **Docs:** [WORKOUTS.md](./WORKOUTS.md) exercise catalog section updated.
+
+### Documentation refresh (2026-06-09)
+
+- Packaging/OAuth docs: `PACKAGING_SECRETS.md`, `POLAR_SETUP.md`, `AUTH_PKCE_AUDIT.md`; port 8000 story; FormaSync/HC UI paths.
+- **ANALYTICS.md / ROADMAP.md:** route telemetry phase 1 marked shipped; phase 2 planned.
+
 ### Documentation maintenance and roadmap update (2026-06-05)
 
 - **Docs:** refreshed project state after testing, bug discovery, Health Connect work and mobile planning.
 - **Priorities:** documented current order: mobile completion, HC validation, sync validation, historical Xiaomi import, bugfix/cleanup, automatic calibration, future analytics.
-- **Known issues:** added P0 body measurements chart/history edit crash, P1 exercise template block-structure loss, and P1 goal deficit validation rejecting values above ~60 kcal/kg fat.
+- **Known issues:** added P0 body measurements chart/history edit crash, P1 exercise template block-structure loss; goal deficit limit fixed at 70 kcal/kg fat.
 - **Roadmap:** added historical Xiaomi/Mi/Zepp import scope, Xiaomi step duplication correction, automatic 14-day calorie calibration workflow and future analytics ideas.
 - **Architecture:** added historical import pipeline, raw-vs-corrected import rules, Xiaomi correction algorithm, HC/sync validation questions.
 - **Mobile:** updated target from companion/parity wording to standalone daily app scope with required domains.
@@ -56,7 +96,7 @@ Last updated: **2026-06-05**.
 - **Docs audit:** completed cleanup report moved to [archive/CLEANUP.md](./archive/CLEANUP.md); docs index updated.
 - **Workouts:** documented normal/superset/circuit block model, template structure persistence, latest-history prefill including warmup, compact history rendering, and exercise catalog hygiene.
 - **Release readiness:** smoke checklist now includes workout blocks, exercise catalog, nutrition and meal plans.
-- **Database docs:** schema updated to `SCHEMA_VERSION=74` (`v071` block metadata, `v072` exercise-set block metadata, `v073` exercise catalog archive, `v074` calorie calibration history).
+- **Database docs at that time:** schema updated to `SCHEMA_VERSION=74` (`v071` block metadata, `v072` exercise-set block metadata, `v073` exercise catalog archive, `v074` calorie calibration history).
 
 ### Desktop release readiness — 2 phases (2026-06-03)
 

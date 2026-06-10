@@ -59,7 +59,7 @@ export function GoalProjectionPanel({
   preferChest: boolean;
   snap: CutBulkSnapshot | null;
 }) {
-  const { formatEnergy, formatBodyWeight } = useUnits();
+  const { formatEnergy, formatBodyWeight, formatDeficitPerKgFat } = useUnits();
   const {
     weight,
     bf,
@@ -287,7 +287,13 @@ export function GoalProjectionPanel({
 
             {forecastHasChartSource(forecast) ? (
               <ChartContainer title="Прогноз веса" height="lg">
-                <WeightProjectionChart forecast={forecast} tall showCaption className="h-full" />
+                <WeightProjectionChart
+                  forecast={forecast}
+                  plan={savedPlan}
+                  tall
+                  showCaption
+                  className="h-full"
+                />
               </ChartContainer>
             ) : (
               <p className="text-[11px] text-[rgb(var(--app-text-muted))] px-0.5">
@@ -329,13 +335,12 @@ export function GoalProjectionPanel({
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] px-0.5 tabular-nums">
                 <span>
                   <span className="text-[rgb(var(--app-text-muted))]">Факт </span>
-                  <span className="font-semibold">{realPerKg.toFixed(1)}</span>
-                  <span className="text-[rgb(var(--app-text-muted))]"> ккал/кг жира</span>
+                  <span className="font-semibold">{formatDeficitPerKgFat(realPerKg)}</span>
                 </span>
                 <span>
                   <span className="text-[rgb(var(--app-text-muted))]">План </span>
                   <span className="font-semibold">
-                    {targetPerKg != null ? targetPerKg.toFixed(0) : "—"}
+                    {targetPerKg != null ? formatDeficitPerKgFat(targetPerKg) : "—"}
                   </span>
                 </span>
                 {forecast.real_avg_deficit_per_day != null && (

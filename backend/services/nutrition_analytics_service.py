@@ -13,7 +13,7 @@ from backend.services import food_service
 def _profile_sex() -> str:
     from backend.services import user_service
 
-    profile = user_service.get_profile()
+    profile = user_service.get_profile() or {}
     return str(profile.get("sex") or "male")
 
 

@@ -4,6 +4,7 @@ import type { FoodPhase } from "../../../api/food";
 import { cn } from "../../../lib/utils";
 import { dayStatus, type DayStatus } from "../useWeekSummary";
 import { isToday, todayBadgeLabel, todayHighlightClass } from "../../../shared/utils/dateHighlight";
+import { useUnits } from "../../../hooks/useUnits";
 import type { WeekDayCell } from "../useFoodWeekData";
 
 const STATUS_STYLES: Record<
@@ -37,10 +38,6 @@ const STATUS_STYLES: Record<
   },
 };
 
-function formatGrams(n: number) {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
-
 function deficitKcalPerKgFat(
   balance: number | null,
   phase: FoodPhase,
@@ -71,6 +68,8 @@ export function WeeklyOverviewCarousel({
   formatEnergy: (n: number) => string;
   isLoading?: boolean;
 }) {
+  const { formatFoodWeight, formatDeficitPerKgFat } = useUnits();
+
   if (isLoading) {
     return (
       <div className="flex gap-3 overflow-hidden">
@@ -150,21 +149,34 @@ export function WeeklyOverviewCarousel({
                 <p>
                   <span className="text-slate-500">Б/Ж/У </span>
                   <span className="font-medium">
-                    {formatGrams(cell.protein)}/{formatGrams(cell.fat)}/{formatGrams(cell.carbs)}
+                    {formatFoodWeight(cell.protein)}/{formatFoodWeight(cell.fat)}/
+                    {formatFoodWeight(cell.carbs)}
                   </span>
                 </p>
                 <p>
                   <span className="text-slate-500">Клетч. </span>
                   <span className="font-medium">
                     {cell.hasEntries
-                      ? `${formatGrams(cell.fiber)} / ${formatGrams(cell.fiberTarget)} г`
+                      ? `${formatFoodWeight(cell.fiber)} / ${formatFoodWeight(cell.fiberTarget)}`
                       : "—"}
                   </span>
                 </p>
                 <p className="font-semibold">{cell.hasEntries ? formatEnergy(cell.intake) : "—"}</p>
-                {cell.expenditure != null && (
+                {cell.expenditure != null && cell.expenditureIsForecast && cell.expenditureForecast ? (
+                  <div className="food-expenditure-forecast food-expenditure-forecast--compact mt-0.5">
+                    <p className="food-expenditure-forecast__label">
+                      {cell.expenditureForecast.label}
+                    </p>
+                    <p className="food-expenditure-forecast__value tabular-nums">
+                      {formatEnergy(cell.expenditure)}
+                    </p>
+                    <p className="food-expenditure-forecast__hint">
+                      {cell.expenditureForecast.explanation}
+                    </p>
+                  </div>
+                ) : cell.expenditure != null ? (
                   <p className="text-slate-500">расх. {formatEnergy(cell.expenditure)}</p>
-                )}
+                ) : null}
                 <p
                   className={cn(
                     "font-bold",
@@ -183,7 +195,7 @@ export function WeeklyOverviewCarousel({
                 </p>
                 {kcalPerKg != null ? (
                   <p className="text-[10px] text-emerald-600/90 dark:text-emerald-400/90">
-                    ≈ {kcalPerKg} ккал/кг жира
+                    ≈ {formatDeficitPerKgFat(kcalPerKg)}
                   </p>
                 ) : null}
               </div>

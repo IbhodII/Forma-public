@@ -1,5 +1,7 @@
 # Packaged Forma vs browser dev coexistence
 
+> **Archived.** Packaged default port **18002** is outdated — current default **8000**. See [../AUTH_PKCE_AUDIT.md](../AUTH_PKCE_AUDIT.md).
+
 ## Ports
 
 | Runtime | API | UI |

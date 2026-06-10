@@ -11,6 +11,13 @@ import { Loader } from "../../components/Loader";
 import { queryKeys } from "../../hooks/queryKeys";
 import { ModalShell } from "../../components/ui/modal";
 import { useUnits } from "../../hooks/useUnits";
+import "./food-diary-layout.css";
+import {
+  MEAL_MODAL_PANEL_CLASS,
+  MEAL_MODAL_SIZE_COMPACT,
+} from "./mealModalLayout";
+
+const COMPOSITE_PRODUCT_FORM_ID = "composite-product-form";
 
 type ComponentRow = {
   key: string;
@@ -88,7 +95,7 @@ function ComponentProductPicker({
           onFocus={() => onChange({ listOpen: true })}
         />
         {row.listOpen && filtered.length > 0 && (
-          <ul className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-[rgb(var(--app-border))] bg-[rgb(var(--app-surface))] shadow-lg text-sm">
+          <ul className="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-[rgb(var(--app-border))] bg-[rgb(var(--app-surface))] shadow-lg text-sm">
             {filtered.map((p) => (
               <li key={p.id}>
                 <button
@@ -234,10 +241,33 @@ export function CompositeProductModal(props: {
   const submitLabel = isEdit ? "Сохранить изменения" : "Сохранить блюдо";
 
   return (
-    <ModalShell open onClose={onClose} dataEntry title={title} size="md" zIndex={60}>
+    <ModalShell
+      open
+      onClose={onClose}
+      dataEntry
+      title={title}
+      size={MEAL_MODAL_SIZE_COMPACT}
+      className={MEAL_MODAL_PANEL_CLASS}
+      zIndex={60}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary sm:w-auto">
+            Отмена
+          </button>
+          <button
+            type="submit"
+            form={COMPOSITE_PRODUCT_FORM_ID}
+            disabled={isPending || !canSubmit}
+            className="btn-primary sm:w-auto"
+          >
+            {isPending ? "Сохранение…" : submitLabel}
+          </button>
+        </>
+      }
+    >
         {formError && <ErrorAlert message={formError} />}
         {isEdit && detailLoading && <Loader label="Загрузка состава…" />}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id={COMPOSITE_PRODUCT_FORM_ID} onSubmit={handleSubmit} className="space-y-4">
           <label className="text-sm block">
             Название блюда
             <input
@@ -302,18 +332,6 @@ export function CompositeProductModal(props: {
               Добавить в справочник
             </button>
           </p>
-          <div className="flex flex-col sm:flex-row gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={isPending || !canSubmit}
-              className="btn-primary sm:w-auto"
-            >
-              {isPending ? "Сохранение…" : submitLabel}
-            </button>
-            <button type="button" onClick={onClose} className="btn-secondary sm:w-auto">
-              Отмена
-            </button>
-          </div>
         </form>
     </ModalShell>
   );

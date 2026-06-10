@@ -10,14 +10,22 @@ from backend.core.week_calendar import WEEKDAY_LABELS_RU
 from backend.database import get_db
 from backend.database.db_utils import get_current_user_id
 from backend.services import settings_service
+from utils.constants import MAX_DEFICIT_PER_KG_FAT, MIN_DEFICIT_PER_KG_FAT
 from utils.hr_profile import age_from_date_of_birth, heart_rate_zones, resolve_max_heart_rate
+
 
 def _profile_id() -> int:
     return get_current_user_id()
+
+
+def _invalidate_profile_cache() -> None:
+    from backend.services.request_cache import invalidate
+
+    invalidate(f"user_profile:{_profile_id()}")
+
+
 VALID_ACTIVITY_LEVELS = frozenset({"sedentary", "active"})
 FIBER_TARGET_GRAMS = 30.0
-MIN_DEFICIT_PER_KG_FAT = 5.0
-MAX_DEFICIT_PER_KG_FAT = 70.0
 TDEE_MULTIPLIER = {"sedentary": 1.2, "active": 1.55}
 WORKOUT_ACTIVITY_HINT = (
     "Для точного определения уровня активности выполните несколько тренировок "
@@ -339,6 +347,7 @@ def upsert_profile(payload: dict[str, Any]) -> dict[str, Any]:
         ).fetchone()
     finally:
         conn.close()
+    _invalidate_profile_cache()
     return build_profile_response(_row_to_dict(row))
 
 
@@ -514,6 +523,7 @@ def save_integration_settings(data: dict[str, Any]) -> dict[str, Any]:
     finally:
         conn.close()
 
+    _invalidate_profile_cache()
     return get_integration_settings()
 
 
@@ -590,6 +600,7 @@ def update_analytics_settings(data: dict[str, Any]) -> dict[str, Any]:
         conn.commit()
     finally:
         conn.close()
+    _invalidate_profile_cache()
     return get_analytics_settings()
 
 
@@ -648,6 +659,7 @@ def save_nutrition_settings(data: dict[str, Any]) -> dict[str, Any]:
     finally:
         conn.close()
 
+    _invalidate_profile_cache()
     stored = get_profile() or {}
     activity = stored.get("activity_level")
     defaults = get_default_nutrition_grams_per_kg(activity)

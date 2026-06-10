@@ -27,8 +27,10 @@ End If
 If exitCode <> 0 Then
   Dim msg
   msg = "Launch failed (exit code " & exitCode & ")." & vbCrLf & vbCrLf
-  msg = msg & "Check the PowerShell window output, or run manually:" & vbCrLf
+  msg = msg & "First clone? Run once:" & vbCrLf
   msg = msg & "  cd " & root & vbCrLf
+  msg = msg & "  .\start.ps1 -Install" & vbCrLf & vbCrLf
+  msg = msg & "Then double-click start.vbs again, or:" & vbCrLf
   msg = msg & "  .\start.ps1 -Source" & vbCrLf & vbCrLf
   msg = msg & "Stop services:" & vbCrLf
   msg = msg & "  .\start.ps1 -Stop" & vbCrLf & vbCrLf

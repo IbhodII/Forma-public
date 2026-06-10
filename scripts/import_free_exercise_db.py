@@ -5,7 +5,7 @@
 Запуск из корня проекта:
     .\\venv\\Scripts\\python.exe scripts/import_free_exercise_db.py
 
-Архив по умолчанию: C:\\Users\\brett\\Downloads\\free-exercise-db-main.zip
+Архив по умолчанию: ./free-exercise-db-main.zip (или путь через аргумент CLI)
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 from database.connection import SHARED_DB_PATH
 from database.migrations import ensure_db_schema
 
-DEFAULT_ZIP = Path(r"C:\Users\brett\Downloads\free-exercise-db-main.zip")
+DEFAULT_ZIP = ROOT / "free-exercise-db-main.zip"
 EXERCISES_JSON_IN_ZIP = "free-exercise-db-main/dist/exercises.json"
 
 
@@ -146,8 +146,9 @@ def import_stretching(
                     name,
                     description,
                     translated,
-                    description_translated
-                ) VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+                    description_translated,
+                    exercise_category
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'stretching')
                 """,
                 (
                     original_name,
