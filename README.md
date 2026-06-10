@@ -13,7 +13,7 @@ Latest Windows installer:
 
 https://github.com/brett263/Forma-public/releases/latest
 
-🎥 Видеообзор
+## 🎥 Видеообзор
 
 Полный обзор приложения и история разработки:
 
