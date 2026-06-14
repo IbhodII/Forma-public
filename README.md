@@ -17,7 +17,7 @@ https://github.com/brett263/Forma-public/releases/latest
 
 Полный обзор приложения и история разработки:
 
-[Ссылка на YouTube] (https://youtu.be/3-pLVAix0Ww)
+[Ссылка на YouTube](https://youtu.be/3-pLVAix0Ww)
 
 В видео показаны:
 
