@@ -17,11 +17,11 @@ https://github.com/brett263/Forma-public/releases/latest
 
 Полный обзор приложения и история разработки:
 
-[Ссылка на YouTube](https://youtu.be/3-pLVAix0Ww)
+[Видеообзор](https://youtu.be/3-pLVAix0Ww)
 
 В видео показаны:
 
-- установка приложения;
+
 - синхронизация с Polar;
 - импорт FIT/GPX;
 - дневник питания;
