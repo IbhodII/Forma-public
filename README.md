@@ -33,10 +33,10 @@ Forma существует не только как репозиторий, но
 
 История проекта и дальнейшие обновления.
 
-[Читать на Пикабу]([ССЫЛКА_НА_ПЕРВЫЙ_ПОСТ](https://pikabu.ru/series/istoriya_razrabotki_sobstvennoy_fitnes_platformyi_60225))
+[Читать на Пикабу](https://pikabu.ru/series/istoriya_razrabotki_sobstvennoy_fitnes_platformyi_60225)
 
 
-
+## За 14 дней была создана первая рабочая версия платформы:
 - Electron desktop приложение
 - FastAPI backend
 - React frontend
